@@ -52,3 +52,15 @@ export function createTestD1(): D1Database {
   };
   return api as unknown as D1Database;
 }
+
+/** Queue stand-in: collects messages so tests can run the consumer explicitly. */
+export function createTestQueue<T>() {
+  const messages: T[] = [];
+  return {
+    messages,
+    queue: {
+      send: async (body: T) => { messages.push(body); },
+      sendBatch: async (batch: Iterable<{ body: T }>) => { for (const m of batch) messages.push(m.body); },
+    } as unknown as Queue<T>,
+  };
+}

@@ -4,6 +4,8 @@ import { z } from 'zod';
 import type { AppEnv } from '../env.js';
 import { audit } from '../lib/auth.js';
 import { nowIso, parseJson, ulid } from '../lib/util.js';
+import { depsFor } from '../sources/deps.js';
+import { requestDiscovery } from '../sources/discovery.js';
 
 const latLng = z.object({ lat: z.number().min(-90).max(90), lng: z.number().min(-180).max(180) });
 const ring = z.array(z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])).min(3);
@@ -114,6 +116,16 @@ const cols = (p: SearchProfileInput) => [
   JSON.stringify(p.extra), p.strategy, p.refreshMin, JSON.stringify(p.notify), p.isActive ? 1 : 0,
 ];
 
+/**
+ * Regions to scan for agencies: a selected province replaces its parent region (narrower and cheaper);
+ * a region without selected provinces is scanned whole. Nothing selected -> no discovery (whole country is too broad).
+ */
+export function discoveryRegions(regionIds: string[]): string[] {
+  const provinces = regionIds.filter((r) => r.includes('-p-'));
+  const hasProvinceOf = (regionId: string) => regionId === 'it-r-07' && provinces.length > 0; // provinces seeded for Liguria only
+  return [...provinces, ...regionIds.filter((r) => r.includes('-r-') && !hasProvinceOf(r))];
+}
+
 export const profiles = new Hono<AppEnv>();
 
 profiles.get('/', async (c) => {
@@ -141,8 +153,9 @@ profiles.post('/', async (c) => {
     .bind(id, user.id, ...cols(p), now, now)
     .run();
   await audit(c.env.DB, { userId: user.id, action: 'create', entity: 'search_profile', entityId: id }, ulid());
+  const discovery = p.isActive ? await requestDiscovery(c.env, depsFor(c.env), discoveryRegions(p.regions), user.id) : [];
   const row = await c.env.DB.prepare('SELECT * FROM search_profiles WHERE id = ?1').bind(id).first<ProfileRow>();
-  return c.json(toApi(row!), 201);
+  return c.json({ ...toApi(row!), discoveryStarted: discovery.length }, 201);
 });
 
 profiles.put('/:id', async (c) => {
@@ -160,8 +173,9 @@ profiles.put('/:id', async (c) => {
     .run();
   if (!res.meta.changes) throw new HTTPException(404, { message: 'not found' });
   await audit(c.env.DB, { userId: user.id, action: 'update', entity: 'search_profile', entityId: id }, ulid());
+  const discovery = p.isActive ? await requestDiscovery(c.env, depsFor(c.env), discoveryRegions(p.regions), user.id) : [];
   const row = await c.env.DB.prepare('SELECT * FROM search_profiles WHERE id = ?1').bind(id).first<ProfileRow>();
-  return c.json(toApi(row!));
+  return c.json({ ...toApi(row!), discoveryStarted: discovery.length });
 });
 
 profiles.delete('/:id', async (c) => {

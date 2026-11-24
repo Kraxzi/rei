@@ -20,3 +20,13 @@ const path = new URL('../wrangler.jsonc', import.meta.url);
 const cfg = readFileSync(path, 'utf8').replace(/"database_id":\s*"[^"]*"/, `"database_id": "${db.uuid}"`);
 writeFileSync(path, cfg);
 console.log(`D1 "${NAME}" = ${db.uuid}`);
+
+// Queue for background jobs: create once; "already exists" is fine.
+try {
+  execFileSync('npx', ['wrangler', 'queues', 'create', 'rei-jobs'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  console.log('queue rei-jobs created');
+} catch (e) {
+  const out = `${e.stdout ?? ''}${e.stderr ?? ''}`;
+  if (/already exists|already taken|11009/i.test(out)) console.log('queue rei-jobs exists');
+  else { console.error(out); throw e; }
+}

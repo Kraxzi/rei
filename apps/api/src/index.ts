@@ -7,6 +7,11 @@ import { auth } from './routes/auth.js';
 import { calc } from './routes/calc.js';
 import { profiles } from './routes/profiles.js';
 import { reference } from './routes/reference.js';
+import { sources } from './routes/sources.js';
+import { depsFor } from './sources/deps.js';
+import { handleJob, requestDiscovery, type Job } from './sources/discovery.js';
+import { discoveryRegions } from './routes/profiles.js';
+import { parseJson } from './lib/util.js';
 
 export const app = new Hono<AppEnv>();
 
@@ -22,6 +27,7 @@ app.use('/api/*', requireUser);
 app.route('/api/ref', reference);
 app.route('/api/profiles', profiles);
 app.route('/api/calc', calc);
+app.route('/api/sources', sources);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
@@ -35,4 +41,22 @@ app.onError((err, c) => {
 
 export default {
   fetch: app.fetch,
-} satisfies ExportedHandler<AppEnv['Bindings']>;
+  /** Hourly: make sure every active search profile has fresh agency discovery (no-op when recent). */
+  async scheduled(_event, env) {
+    const { results } = await env.DB.prepare('SELECT regions FROM search_profiles WHERE is_active = 1').all<{ regions: string }>();
+    const regions = results.flatMap((r) => discoveryRegions(parseJson<string[]>(r.regions, [])));
+    if (regions.length) await requestDiscovery(env, depsFor(env), regions, null);
+  },
+  async queue(batch, env) {
+    const deps = depsFor(env);
+    for (const msg of batch.messages) {
+      try {
+        await handleJob(env, deps, msg.body);
+        msg.ack();
+      } catch (e) {
+        console.error('job failed', msg.body, e);
+        msg.retry({ delaySeconds: 60 });
+      }
+    }
+  },
+} satisfies ExportedHandler<AppEnv['Bindings'], Job>;

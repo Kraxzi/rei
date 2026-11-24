@@ -13,7 +13,7 @@ vi.mock('@simplewebauthn/server', async (orig) => ({
 }));
 
 const { app } = await import('../src/index.js');
-const { createTestD1 } = await import('./d1-shim.js');
+const { createTestD1, createTestQueue } = await import('./d1-shim.js');
 import type { Env } from '../src/env.js';
 
 let env: Env;
@@ -49,7 +49,7 @@ async function register(b: ReturnType<typeof browser>, code: string, name: strin
 }
 
 beforeEach(() => {
-  env = { DB: createTestD1(), ENVIRONMENT: 'test', BOOTSTRAP_CODE: 'START-1234' };
+  env = { DB: createTestD1(), ENVIRONMENT: 'test', BOOTSTRAP_CODE: 'START-1234', JOBS: createTestQueue().queue };
 });
 
 describe('passkey auth', () => {

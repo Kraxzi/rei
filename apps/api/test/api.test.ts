@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../src/index.js';
 import { sha256Hex } from '../src/lib/auth.js';
 import type { Env } from '../src/env.js';
-import { createTestD1 } from './d1-shim.js';
+import { createTestD1, createTestQueue } from './d1-shim.js';
 
 let env: Env;
 const TOKEN = 'test-session-token';
@@ -15,7 +15,7 @@ async function req(path: string, init: RequestInit & { auth?: boolean } = {}) {
 }
 
 beforeEach(async () => {
-  env = { DB: createTestD1(), ENVIRONMENT: 'test' };
+  env = { DB: createTestD1(), ENVIRONMENT: 'test', JOBS: createTestQueue().queue };
   const now = new Date().toISOString();
   const later = new Date(Date.now() + 3600_000).toISOString();
   await env.DB.prepare("INSERT INTO users (id, display_name, role, created_at) VALUES ('u1', 'Owner', 'owner', ?1)").bind(now).run();

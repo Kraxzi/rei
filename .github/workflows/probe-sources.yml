@@ -1,0 +1,18 @@
+name: Probe sources (read-only)
+on:
+  workflow_dispatch:
+    inputs:
+      iso: { description: 'ISO 3166-2 region, e.g. IT-IM', default: 'IT-IM' }
+      limit: { description: 'max sites to audit', default: '60' }
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: apps/api }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: npx tsx scripts/probe-sources.ts "${{ inputs.iso }}" "${{ inputs.limit }}" | tee -a $GITHUB_STEP_SUMMARY

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type SearchProfile, type User } from '../api';
 import { ApproveSuitable, regionLine, useSourceSummary } from './Sources';
+import { Feed } from './Feed';
 
 export function Home({ user }: { user: User }) {
   const [profiles, setProfiles] = useState<SearchProfile[] | null>(null);
@@ -8,6 +9,10 @@ export function Home({ user }: { user: User }) {
   const active = profiles?.filter((p) => p.isActive).length ?? 0;
   const { data: regions, reload } = useSourceSummary();
   const canDecide = user.role === 'owner' || user.role === 'admin';
+  const [notes, setNotes] = useState<Array<{ id: string; title: string; body: string; property_id: string | null; read_at: string | null; created_at: string }> | null>(null);
+  useEffect(() => { api<NonNullable<typeof notes>>('/notifications').then(setNotes, () => setNotes([])); }, []);
+  const unread = notes?.filter((n) => !n.read_at) ?? [];
+  const markRead = async () => { await api('/notifications/read', { method: 'POST' }); setNotes(notes?.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })) ?? null); };
   const busy = regions?.some((r) => r.status === 'queued' || r.status === 'running' || (r.counts?.pending ?? 0) > 0);
   useEffect(() => {
     if (!busy) return;
@@ -19,9 +24,20 @@ export function Home({ user }: { user: User }) {
     <main className="page">
       <h1 className="page-title">Здравствуйте, {user.displayName}</h1>
       <p className="page-lead">
-        Настройте, что искать, — REI сам найдёт агентства в выбранных регионах и проверит их сайты. Сбор объявлений
-        с подключённых сайтов и аукционов — следующий шаг. Посчитать любой объект можно уже сейчас.
+        REI сам находит агентства в регионах ваших поисков, собирает объявления с подключённых сайтов, оценивает их и показывает лучшие здесь.
       </p>
+
+      {unread.length > 0 && (
+        <section className="group">
+          <h3>Новое <span className="muted num">{unread.length}</span></h3>
+          <ul className="list">
+            {unread.slice(0, 8).map((n) => (
+              <li key={n.id}><a href={n.property_id ? `#/p/${n.property_id}` : '#/'}><div><div className="title">{n.title}</div><div className="sub num">{n.body}</div></div></a></li>
+            ))}
+          </ul>
+          <button className="link" onClick={markRead}>Отметить всё прочитанным</button>
+        </section>
+      )}
 
       {regions && regions.length > 0 && (
         <section className="group">
@@ -58,8 +74,7 @@ export function Home({ user }: { user: User }) {
         </li>
       </ul>
 
-      <h2>Что будет дальше</h2>
-      <p className="muted">Находки по вашим поискам, снижения цен и аукционы будут появляться здесь и приходить уведомлением на телефон.</p>
+      <Feed />
     </main>
   );
 }

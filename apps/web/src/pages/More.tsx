@@ -60,6 +60,7 @@ export function More({ user, onLogout }: { user: User; onLogout: () => void }) {
       <ErrorBox error={error} />
 
       <ul className="list">
+        <li><a href="#/favorites"><div><div className="title">Избранное</div><div className="sub">Объекты, за которыми вы следите</div></div></a></li>
         <li><a href="#/sources"><div><div className="title">Источники</div><div className="sub">Найденные агентства, проверка и подключение</div></div></a></li>
       </ul>
 

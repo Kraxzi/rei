@@ -6,6 +6,8 @@ import { Login } from './pages/Login';
 import { More } from './pages/More';
 import { ProfileEdit, ProfilesList } from './pages/Profiles';
 import { Sources } from './pages/Sources';
+import { Favorites } from './pages/Feed';
+import { Property } from './pages/Property';
 import { useRoute } from './ui';
 
 const I = {
@@ -19,7 +21,7 @@ const icon = (p: React.ReactNode) => (
 );
 
 const TABS = [
-  { path: '/', label: 'Главная', icon: I.home, match: (r: string) => r === '/' },
+  { path: '/', label: 'Главная', icon: I.home, match: (r: string) => r === '/' || r.startsWith('/p/') },
   { path: '/profiles', label: 'Поиски', icon: I.search, match: (r: string) => r.startsWith('/profiles') },
   { path: '/calc', label: 'Расчёт', icon: I.calc, match: (r: string) => r.startsWith('/calc') },
   { path: '/more', label: 'Ещё', icon: I.more, match: (r: string) => r.startsWith('/more') },
@@ -39,12 +41,16 @@ export function App() {
   if (!me.user) return <Login me={me} onDone={refresh} />;
 
   let page: React.ReactNode;
-  const m = route.match(/^\/profiles\/(.+)$/);
-  if (route === '/profiles') page = <ProfilesList />;
+  const path = route.split('?')[0]!;
+  const m = path.match(/^\/profiles\/(.+)$/);
+  const pm = path.match(/^\/p\/(.+)$/);
+  if (path === '/profiles') page = <ProfilesList />;
+  else if (pm) page = <Property key={pm[1]} id={pm[1]!} user={me.user} />;
+  else if (path === '/favorites') page = <Favorites />;
   else if (m) page = <ProfileEdit key={m[1]} id={m[1] === 'new' ? null : m[1]!} />;
-  else if (route === '/calc') page = <Calculator />;
-  else if (route === '/sources') page = <Sources user={me.user} />;
-  else if (route === '/more') page = <More user={me.user} onLogout={() => { setMe({ ...me, user: null }); refresh(); }} />;
+  else if (path === '/calc') page = <Calculator key={route} />;
+  else if (path === '/sources') page = <Sources user={me.user} />;
+  else if (path === '/more') page = <More user={me.user} onLogout={() => { setMe({ ...me, user: null }); refresh(); }} />;
   else page = <Home user={me.user} />;
 
   return (

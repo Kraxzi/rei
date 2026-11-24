@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from '../api';
 import { eurosToCents, money, parseNumber, percent, percentToRate, years } from '../format';
 import { MODEL_FORMS, type ModelField } from '../models';
@@ -133,6 +133,25 @@ export function Calculator() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [horizon, setHorizon] = useState(2); // index into [1,3,5]
+
+  // prefill from a property card: #/calc?type=garage&price=28000&rent=120
+  useEffect(() => {
+    if (!tax) return;
+    const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
+    const t = q.get('type');
+    if (!t || typeCode) return;
+    const found = tax.categories.flatMap((c) => c.types).find((x) => x.code === t);
+    if (!found) return;
+    setTypeCode(t);
+    const m = found.financialModels[0] ?? '';
+    setModel(m);
+    if (q.get('price')) setAcq((a) => ({ ...a, price: q.get('price')!.replace('.', ',') }));
+    const rent = q.get('rent');
+    if (rent) {
+      const key = m === 'unit_rental' ? 'monthlyRatePerUnit' : m === 'residential_long_term' ? 'monthlyRent' : null;
+      if (key) setMv((v) => ({ ...v, [key]: rent.replace('.', ','), ...(m === 'unit_rental' ? { units: '1', occupancy: '90' } : {}) }));
+    }
+  }, [tax, typeCode]);
 
   const type = useMemo(() => tax?.categories.flatMap((c) => c.types).find((t) => t.code === typeCode), [tax, typeCode]);
   const form = MODEL_FORMS[model];

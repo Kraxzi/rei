@@ -157,6 +157,24 @@ properties.post('/:id/reanalyze', async (c) => {
   return c.json({ analyzed: !!r });
 });
 
+// ---------- "Share" from another app ----------
+
+/** A link shared to REI: accepted only from connected (approved) sites; the page is fetched by the queue. */
+properties.post('/share', async (c) => {
+  const { url } = z.object({ url: z.string().url() }).parse(await c.req.json().catch(() => ({})));
+  const origin = new URL(url).origin.replace('://www.', '://');
+  const { results } = await c.env.DB.prepare(
+    "SELECT id, base_url, is_active, access_status, kind FROM sources WHERE kind IN ('agency','auction','public','bank')",
+  ).all<{ id: string; base_url: string; is_active: number; access_status: string }>();
+  const src = results.find((s) => s.base_url.replace('://www.', '://') === origin);
+  if (!src) return c.json({ status: 'unknown_site', message: 'Этот сайт не подключён. Ссылки с крупных порталов не поддерживаются; агентство можно подключить в «Источниках», если оно найдено в вашем регионе.' });
+  if (!src.is_active || src.access_status !== 'approved_public') return c.json({ status: 'not_approved', message: 'Сайт найден, но не подключён. Подключите его в «Источниках».' });
+  const existing = await c.env.DB.prepare('SELECT property_id FROM listings WHERE source_id = ?1 AND url = ?2').bind(src.id, url).first<string>('property_id');
+  if (existing) return c.json({ status: 'known', propertyId: existing });
+  await c.env.JOBS.send({ type: 'listing', sourceId: src.id, url });
+  return c.json({ status: 'queued', message: 'Объявление принято, через минуту появится в находках и в избранном можно будет его найти по ссылке.' });
+});
+
 // ---------- duplicates review (admin) ----------
 
 properties.post('/dedup/:candidateId', requireAdmin, async (c) => {

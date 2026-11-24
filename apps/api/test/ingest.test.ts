@@ -203,3 +203,13 @@ describe('manual / test import and property card', () => {
     expect((await call('/api/properties/import', { method: 'POST', body: { test: true, regionId: 'nowhere', items: items.slice(0, 1) } })).status).toBe(422);
   });
 });
+
+describe('share target', () => {
+  it('accepts links only from connected sites; portals rejected', async () => {
+    const r1 = (await (await call('/api/properties/share', { method: 'POST', body: { url: 'https://www.immobiliare.it/annunci/123' } })).json()) as { status: string };
+    expect(r1.status).toBe('unknown_site');
+    const r2 = (await (await call('/api/properties/share', { method: 'POST', body: { url: 'https://agenziamare.it/immobili/vendita-trilocale-555' } })).json()) as { status: string };
+    expect(r2.status).toBe('queued');
+    expect(q.messages).toContainEqual({ type: 'listing', sourceId: 's1', url: 'https://agenziamare.it/immobili/vendita-trilocale-555' });
+  });
+});

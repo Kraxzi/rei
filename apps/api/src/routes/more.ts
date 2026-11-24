@@ -139,5 +139,29 @@ market.get('/', async (c) => {
       grossYield: s.median && r.median && s.n >= 3 && r.n >= 3 ? (r.median * 12) / s.median : null,
     };
   }).sort((a, b) => b.saleCount - a.saleCount);
-  return c.json({ rows, note: 'Цены предложений (объявлений), не сделок. Медианы; доходность — валовая.' });
+  const { marketGrowth } = await import('../ingest/market.js');
+  const it = await marketGrowth(c.env, 'IT');
+  return c.json({ rows, note: 'Цены предложений (объявлений), не сделок. Медианы; доходность — валовая.', hpi: { country: 'IT', ...it } });
+});
+
+// ---------- tax profile (applies to automatic analysis of every offer) ----------
+export const settings = new Hono<AppEnv>();
+const taxProfileSchema = z.object({
+  buyer: z.enum(['individual', 'company']),
+  firstHome: z.boolean(),
+  rentalRegime: z.enum(['long_ordinary', 'long_concordato', 'short_first', 'short_second', 'irpef']),
+});
+settings.get('/tax', async (c) => {
+  const { taxProfile } = await import('../ingest/analyze.js');
+  return c.json({ profile: await taxProfile(c.env), canEdit: ['owner', 'admin'].includes(c.get('user').role) });
+});
+settings.put('/tax', async (c) => {
+  if (!['owner', 'admin'].includes(c.get('user').role)) throw new HTTPException(403, { message: 'forbidden' });
+  const parsed = taxProfileSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'validation', issues: parsed.error.issues }, 422);
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value, updated_at) VALUES ('tax_profile', ?1, ?2) ON CONFLICT(key) DO UPDATE SET value = ?1, updated_at = ?2")
+    .bind(JSON.stringify(parsed.data), nowIso()).run();
+  // stored analyses used the old profile: let the hourly agent recompute them
+  await c.env.DB.prepare('UPDATE properties SET analyzed_at = NULL WHERE merged_into IS NULL').run();
+  return c.json({ profile: parsed.data });
 });

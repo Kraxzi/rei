@@ -127,7 +127,7 @@ properties.get('/:id', async (c) => {
     score: s ? { score: Number(s.score) < 0 ? null : s.score, confidence: s.confidence, components: parseJson(s.components as string, {}), reasons: parseJson(s.confidence_reasons as string, []), profile: s.profile_code, engine: s.engine_version, at: s.computed_at } : null,
     valuation: v ? { low: v.value_low, mid: v.value_mid, high: v.value_high, ...parseJson<object>(v.inputs as string, {}), confidence: v.confidence, at: v.computed_at } : null,
     rental: rm ? { ...parseJson<object>(rm.inputs, {}), assumptions: parseJson(rm.assumptions, []), finance: parseJson(rm.results, null), at: rm.computed_at } : null,
-    netYield: p.net_yield, undervaluation: p.undervaluation,
+    netYield: p.net_yield, netYieldAfterTax: p.net_yield_after_tax, locationScore: p.location_score, undervaluation: p.undervaluation,
     notes: notes!.results, favorite: fav!.results.length > 0, duplicates: dups!.results,
   });
 });

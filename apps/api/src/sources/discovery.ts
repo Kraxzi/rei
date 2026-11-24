@@ -8,7 +8,9 @@ export type Job =
   | { type: 'audit'; sourceId: string }
   | { type: 'scan'; sourceId: string }
   | { type: 'listing'; sourceId: string; url: string }
-  | { type: 'analyze'; propertyId: string };
+  | { type: 'analyze'; propertyId: string }
+  | { type: 'location'; cell: string; lat: number; lng: number }
+  | { type: 'hpi'; country: string };
 
 /** A job plus optional queue delay (politeness spacing for requests to the same site). */
 export type QueuedJob = Job & { delaySeconds?: number };
@@ -40,7 +42,7 @@ async function get(deps: Deps, url: string): Promise<{ status: number | null; te
   }
 }
 
-async function overpass(deps: Deps, query: string): Promise<OsmElement[]> {
+export async function overpass(deps: Pick<Deps, 'fetch'>, query: string): Promise<OsmElement[]> {
   const errors: string[] = [];
   for (const url of OVERPASS_ENDPOINTS) {
     try {
@@ -206,6 +208,14 @@ export async function handleJob(env: Env, deps: Deps, job: Job): Promise<void> {
     case 'analyze': {
       if (await analyzePropertyById(env, job.propertyId)) await notifyForProperty(env, job.propertyId, []);
       return;
+    }
+    case 'location': {
+      const { runLocation } = await import('../ingest/analyze.js');
+      return runLocation(env, deps, job.cell, job.lat, job.lng);
+    }
+    case 'hpi': {
+      const { runHpi } = await import('../ingest/market.js');
+      return runHpi(env, deps, job.country);
     }
   }
 }

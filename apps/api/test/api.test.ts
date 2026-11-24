@@ -153,7 +153,7 @@ describe('calculator', () => {
       assumptions: Array<{ key: string }>;
       disclaimer: string;
     };
-    expect(body.engineVersion).toBe('fin-1.0.0');
+    expect(body.engineVersion).toBe('fin-1.1.0');
     const base = body.scenarios.find((s) => s.scenario === 'base')!;
     // 120 €/month × 12 × 92% = 1,324.80 €
     expect(base.yearOne.statement.gri).toBe(132_480);

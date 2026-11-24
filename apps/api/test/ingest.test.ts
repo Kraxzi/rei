@@ -181,10 +181,12 @@ describe('manual / test import and property card', () => {
     expect(testFeed.items).toHaveLength(5);
     expect(testFeed.items.every((i) => i.isTest)).toBe(true);
 
-    const card = (await (await call(`/api/properties/${testFeed.items[0]!.id}`)).json()) as { isTest: boolean; valuation: { n: number; kind: string }; rental: { assumptions: Array<{ source: string }> }; score: { reasons: string[] }; category: { risks: string[] } };
+    const card = (await (await call(`/api/properties/${testFeed.items[0]!.id}`)).json()) as { isTest: boolean; valuation: { n: number; kind: string }; rental: { assumptions: Array<{ source: string }>; taxWarnings?: string[] }; netYieldAfterTax: number | null; score: { reasons: string[] }; category: { risks: string[] } };
     expect(card.isTest).toBe(true);
     expect(card.valuation.kind).toBe('asking');
-    expect(card.rental.assumptions.some((a) => a.source.includes('не проверены'))).toBe(true);
+    expect(card.rental.assumptions.some((a) => a.source.includes('Agenzia Entrate'))).toBe(true);
+    expect(card.rental.taxWarnings).toBeDefined();
+    expect(typeof card.netYieldAfterTax === 'number' || card.netYieldAfterTax === null).toBe(true);
     expect(card.category.risks.length).toBeGreaterThan(0);
   });
 

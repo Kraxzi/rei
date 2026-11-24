@@ -9,7 +9,7 @@ import { profiles } from './routes/profiles.js';
 import { reference } from './routes/reference.js';
 import { sources } from './routes/sources.js';
 import { notifications, properties } from './routes/properties.js';
-import { analyst, market, portfolio, push } from './routes/more.js';
+import { analyst, market, portfolio, push, settings } from './routes/more.js';
 import { depsFor } from './sources/deps.js';
 import { handleJob, requestDiscovery, type Job } from './sources/discovery.js';
 import { discoveryRegions } from './routes/profiles.js';
@@ -36,6 +36,7 @@ app.route('/api/analyst', analyst);
 app.route('/api/push', push);
 app.route('/api/portfolio', portfolio);
 app.route('/api/market', market);
+app.route('/api/settings', settings);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
@@ -72,7 +73,13 @@ export default {
     ).all<{ id: string }>();
     // 4) sources added without a discovery run (national portals) still need their audit
     const { results: unaudited } = await env.DB.prepare("SELECT id FROM sources WHERE verdict = 'pending' AND audited_at IS NULL AND region_id IS NULL LIMIT 5").all<{ id: string }>();
+    // 5) context data: POIs for new ~1 km cells (Overpass, slow → queued, few per hour), national price index monthly
+    const { cellsNeedingLocation } = await import('./ingest/analyze.js');
+    const { countriesNeedingHpi } = await import('./ingest/market.js');
+    const [cells, hpi] = await Promise.all([cellsNeedingLocation(env, 3), countriesNeedingHpi(env)]);
     await deps.enqueue([
+      ...hpi.map((country) => ({ type: 'hpi' as const, country })),
+      ...cells.map((c, i) => ({ type: 'location' as const, ...c, delaySeconds: i * 60 })),
       ...unaudited.map((u) => ({ type: 'audit' as const, sourceId: u.id })),
       ...due.map((d) => ({ type: 'scan' as const, sourceId: d.id })),
       ...stale.map((p) => ({ type: 'analyze' as const, propertyId: p.id })),

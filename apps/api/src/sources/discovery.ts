@@ -3,14 +3,22 @@ import { aiJson } from '../ai/provider.js';
 import type { Env } from '../env.js';
 import { nowIso, parseJson, ulid } from '../lib/util.js';
 
-export type Job = { type: 'discover'; discoveryId: string } | { type: 'audit'; sourceId: string };
+export type Job =
+  | { type: 'discover'; discoveryId: string }
+  | { type: 'audit'; sourceId: string }
+  | { type: 'scan'; sourceId: string }
+  | { type: 'listing'; sourceId: string; url: string }
+  | { type: 'analyze'; propertyId: string };
+
+/** A job plus optional queue delay (politeness spacing for requests to the same site). */
+export type QueuedJob = Job & { delaySeconds?: number };
 
 const MAX_HTML = 300_000;
 const REDISCOVER_DAYS = 30;
 
 export interface Deps {
   fetch: typeof fetch;
-  enqueue: (jobs: Job[]) => Promise<void>;
+  enqueue: (jobs: QueuedJob[]) => Promise<void>;
 }
 
 async function get(deps: Deps, url: string): Promise<{ status: number | null; text: string | null; headers: Record<string, string> }> {
@@ -187,8 +195,19 @@ export async function runAudit(env: Env, deps: Deps, sourceId: string): Promise<
 }
 
 export async function handleJob(env: Env, deps: Deps, job: Job): Promise<void> {
-  if (job.type === 'discover') await runDiscovery(env, deps, job.discoveryId);
-  else if (job.type === 'audit') await runAudit(env, deps, job.sourceId);
+  const { runScan, runListing } = await import('../ingest/scan.js');
+  const { analyzePropertyById } = await import('../ingest/analyze.js');
+  const { notifyForProperty } = await import('../ingest/notify.js');
+  switch (job.type) {
+    case 'discover': return runDiscovery(env, deps, job.discoveryId);
+    case 'audit': return runAudit(env, deps, job.sourceId);
+    case 'scan': return runScan(env, deps, job.sourceId);
+    case 'listing': return runListing(env, deps, job.sourceId, job.url);
+    case 'analyze': {
+      if (await analyzePropertyById(env, job.propertyId)) await notifyForProperty(env, job.propertyId, []);
+      return;
+    }
+  }
 }
 
 export const sourceAudit = (row: { audit: string | null }) => parseJson<ReturnType<typeof auditSource> | null>(row.audit, null);

@@ -1,6 +1,7 @@
 import { matchProfile, TYPES, type ListingEvent, type MatchProfile } from '@rei/core';
 import type { Env } from '../env.js';
 import { nowIso, parseJson, ulid } from '../lib/util.js';
+import { pushPing } from '../lib/push.js';
 
 /**
  * Opportunities agent, per property: after ingest/analysis, decide which users should hear about it.
@@ -26,6 +27,7 @@ export async function notifyForProperty(env: Env, propertyId: string, events: Ar
   const typeName = TYPES.find((t) => t.code === p.type_code)?.name.ru ?? p.type_code;
   const features = parseJson<Record<string, unknown>>(p.features, {});
   let created = 0;
+  const notifiedUsers = new Set<string>();
 
   for (const row of profiles) {
     const prof: MatchProfile = {
@@ -52,7 +54,7 @@ export async function notifyForProperty(env: Env, propertyId: string, events: Ar
       const res = await env.DB.prepare('INSERT INTO notifications (id, user_id, kind, property_id, profile_id, title, body, dedupe_key, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) ON CONFLICT(user_id, dedupe_key) DO NOTHING')
         .bind(ulid(), row.user_id as string, kind, p.id, row.id as string, title, body, key, nowIso())
         .run();
-      created += res.meta.changes ?? 0;
+      if (res.meta.changes) { created++; notifiedUsers.add(row.user_id as string); }
     };
 
     const place = p.city ? `, ${p.city}` : '';
@@ -75,5 +77,6 @@ export async function notifyForProperty(env: Env, propertyId: string, events: Ar
       await send('high_yield', `${p.id}:yield`, `Доходность выше цели: ${typeName}${place}`);
     }
   }
+  if (notifiedUsers.size) await pushPing(env, [...notifiedUsers]);
   return created;
 }

@@ -84,7 +84,7 @@ describe('discovery & audit pipeline', () => {
     const disc = await env.DB.prepare('SELECT status, found, without_website, excluded FROM region_discoveries').first();
     expect(disc).toEqual({ status: 'done', found: 4, without_website: 1, excluded: 1 });
 
-    const { results } = await env.DB.prepare('SELECT base_url, verdict, access_status, is_active, decision FROM sources ORDER BY base_url').all<{ base_url: string; verdict: string; access_status: string; is_active: number; decision: string | null }>();
+    const { results } = await env.DB.prepare("SELECT base_url, verdict, access_status, is_active, decision FROM sources WHERE kind = 'agency' ORDER BY base_url").all<{ base_url: string; verdict: string; access_status: string; is_active: number; decision: string | null }>();
     const v = Object.fromEntries(results.map((r) => [r.base_url, r.verdict]));
     expect(v).toEqual({
       'https://agenziamare.it': 'suitable',

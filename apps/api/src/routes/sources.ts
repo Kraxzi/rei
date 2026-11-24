@@ -35,7 +35,7 @@ sources.get('/summary', async (c) => {
        SUM(CASE WHEN verdict = 'rejected' THEN 1 ELSE 0 END) AS rejected,
        SUM(CASE WHEN decision = 'approved' THEN 1 ELSE 0 END) AS approved,
        SUM(CASE WHEN decision = 'declined' THEN 1 ELSE 0 END) AS declined
-     FROM sources WHERE kind = 'agency' GROUP BY region_id`,
+     FROM sources WHERE kind IN ('agency','auction','public','bank') GROUP BY region_id`,
   ).all<Record<string, number | string>>();
   const byRegion = Object.fromEntries(counts.map((r) => [r.region_id, r]));
   return c.json(disc.map((d) => ({ ...d, counts: byRegion[d.region_id as string] ?? null })));
@@ -43,14 +43,15 @@ sources.get('/summary', async (c) => {
 
 sources.get('/', async (c) => {
   const region = c.req.query('region');
+  const national = c.req.query('national') === '1';
   const { results } = await c.env.DB.prepare(
     `SELECT s.id, s.name, s.base_url, s.city, s.region_id, r.name AS region_name, s.verdict, s.decision, s.access_status, s.connector, s.audit, s.audited_at
      FROM sources s LEFT JOIN regions r ON r.id = s.region_id
-     WHERE s.kind = 'agency' ${region ? 'AND s.region_id = ?1' : ''}
+     WHERE s.kind IN ('agency','auction','public','bank') ${national ? 'AND s.region_id IS NULL' : region ? 'AND s.region_id = ?1' : ''}
      ORDER BY CASE s.verdict WHEN 'suitable' THEN 0 WHEN 'review' THEN 1 WHEN 'pending' THEN 2 ELSE 3 END, s.name
      LIMIT 500`,
   )
-    .bind(...(region ? [region] : []))
+    .bind(...(region && !national ? [region] : []))
     .all<SourceRow>();
   return c.json(
     results.map((s) => {
@@ -83,9 +84,9 @@ const decide = async (c: Context<AppEnv>, ids: string[], decision: 'approved' | 
     const res = await c.env.DB.prepare(
       decision === 'approved'
         ? `UPDATE sources SET decision = 'approved', access_status = 'approved_public', is_active = 1, approved_by = ?1, approved_at = ?2
-           WHERE kind = 'agency' AND verdict IN ('suitable','review') AND ?3 = ?3 AND id IN (${ph})`
+           WHERE kind IN ('agency','auction','public','bank') AND verdict IN ('suitable','review') AND ?3 = ?3 AND id IN (${ph})`
         : `UPDATE sources SET decision = 'declined', access_status = 'not_connected', is_active = 0, approved_by = ?1, approved_at = ?2
-           WHERE kind = 'agency' AND ?3 = ?3 AND id IN (${ph})`,
+           WHERE kind IN ('agency','auction','public','bank') AND ?3 = ?3 AND id IN (${ph})`,
     )
       .bind(user.id, now, decision, ...chunk)
       .run();
@@ -108,7 +109,7 @@ sources.post('/decline', requireAdmin, async (c) => {
 /** One tap: connect every agency of the region whose audit found nothing questionable. */
 sources.post('/approve-suitable', requireAdmin, async (c) => {
   const { regionId } = z.object({ regionId: z.string() }).parse(await c.req.json().catch(() => ({})));
-  const { results } = await c.env.DB.prepare("SELECT id FROM sources WHERE kind = 'agency' AND region_id = ?1 AND verdict = 'suitable' AND decision IS NULL")
+  const { results } = await c.env.DB.prepare("SELECT id FROM sources WHERE kind IN ('agency','auction','public','bank') AND region_id = ?1 AND verdict = 'suitable' AND decision IS NULL")
     .bind(regionId)
     .all<{ id: string }>();
   return c.json({ approved: await decide(c, results.map((r) => r.id), 'approved') });

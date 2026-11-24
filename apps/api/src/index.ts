@@ -9,6 +9,7 @@ import { profiles } from './routes/profiles.js';
 import { reference } from './routes/reference.js';
 import { sources } from './routes/sources.js';
 import { notifications, properties } from './routes/properties.js';
+import { analyst, market, portfolio, push } from './routes/more.js';
 import { depsFor } from './sources/deps.js';
 import { handleJob, requestDiscovery, type Job } from './sources/discovery.js';
 import { discoveryRegions } from './routes/profiles.js';
@@ -31,6 +32,10 @@ app.route('/api/calc', calc);
 app.route('/api/sources', sources);
 app.route('/api/properties', properties);
 app.route('/api/notifications', notifications);
+app.route('/api/analyst', analyst);
+app.route('/api/push', push);
+app.route('/api/portfolio', portfolio);
+app.route('/api/market', market);
 
 app.notFound((c) => c.json({ error: 'not_found' }, 404));
 app.onError((err, c) => {
@@ -65,7 +70,10 @@ export default {
          AND (p.analyzed_at IS NULL OR p.analyzed_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days'))
        ORDER BY p.analyzed_at LIMIT 30`,
     ).all<{ id: string }>();
+    // 4) sources added without a discovery run (national portals) still need their audit
+    const { results: unaudited } = await env.DB.prepare("SELECT id FROM sources WHERE verdict = 'pending' AND audited_at IS NULL AND region_id IS NULL LIMIT 5").all<{ id: string }>();
     await deps.enqueue([
+      ...unaudited.map((u) => ({ type: 'audit' as const, sourceId: u.id })),
       ...due.map((d) => ({ type: 'scan' as const, sourceId: d.id })),
       ...stale.map((p) => ({ type: 'analyze' as const, propertyId: p.id })),
     ]);

@@ -250,6 +250,12 @@ notifications.get('/', async (c) => {
     .all();
   return c.json(results);
 });
+notifications.get('/latest', async (c) => {
+  const n = await c.env.DB.prepare('SELECT id, title, body, property_id, created_at FROM notifications WHERE user_id = ?1 AND read_at IS NULL ORDER BY created_at DESC LIMIT 1')
+    .bind(c.get('user').id).first();
+  const unread = await c.env.DB.prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ?1 AND read_at IS NULL').bind(c.get('user').id).first<number>('n');
+  return c.json({ latest: n, unread });
+});
 notifications.post('/read', async (c) => {
   await c.env.DB.prepare('UPDATE notifications SET read_at = ?2 WHERE user_id = ?1 AND read_at IS NULL').bind(c.get('user').id, nowIso()).run();
   return c.json({ ok: true });

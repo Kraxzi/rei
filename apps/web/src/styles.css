@@ -196,3 +196,12 @@ table.scen td.base { font-weight: 700; background: var(--ochre-soft); }
 .comp-bar { height: 6px; background: var(--lime); border-radius: 3px; margin: 6px 0 4px; overflow: hidden; }
 .comp-bar span { display: block; height: 100%; background: var(--ochre); }
 .comp-head > span:last-child { white-space: nowrap; }
+
+.map { height: calc(100dvh - var(--nav-h) - 150px); min-height: 360px; border-radius: var(--r-sheet); overflow: hidden; margin-top: 12px; background: var(--line); }
+@media (min-width: 900px) { .map { height: calc(100dvh - 64px - 150px); } }
+.pin { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 4px; border-radius: 15px; font: 700 0.8rem 'Onest', sans-serif; text-decoration: none; border: 2px solid var(--paper); box-shadow: 0 1px 3px rgba(43, 58, 66, 0.35); }
+.pin.hi { background: var(--ochre); color: var(--slate); }
+.pin.mid { background: var(--ochre-soft); color: var(--slate); }
+.pin.lo, .pin.none { background: var(--paper); color: var(--slate-2); }
+table.compare th, table.compare td { white-space: normal; min-width: 92px; }
+table.compare th a { color: var(--sea); font-size: var(--fs-sm); word-break: break-word; white-space: normal; }

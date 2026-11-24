@@ -71,9 +71,12 @@ export function Sources({ user }: { user: User }) {
   useEffect(loadItems, [loadItems]);
 
   const decide = async (ids: string[], what: 'approve' | 'decline') => {
-    try { await api(`/sources/${what}`, { method: 'POST', body: { ids } }); loadItems(); reload(); } catch (e) { setError((e as Error).message); }
+    try { await api(`/sources/${what}`, { method: 'POST', body: { ids } }); loadItems(); reload(); loadNational(); } catch (e) { setError((e as Error).message); }
   };
 
+  const [national, setNational] = useState<SourceItem[]>([]);
+  const loadNational = useCallback(() => { api<SourceItem[]>('/sources?national=1').then(setNational, () => setNational([])); }, []);
+  useEffect(loadNational, [loadNational]);
   const current = summary?.find((s) => s.region_id === active);
   const groups: Array<[string, SourceItem[]]> = items
     ? [
@@ -93,6 +96,26 @@ export function Sources({ user }: { user: User }) {
       lead="Агентства находятся сами по регионам ваших поисков. Сайт каждого проверяется: разрешён ли сбор, нет ли защиты от ботов, что сказано в условиях. Подключаются только те, что вы одобрили."
     >
       <ErrorBox error={error} />
+      {national.length > 0 && (
+        <section className="group">
+          <h3>Общенациональные источники</h3>
+          {national.map((s) => (
+            <div key={s.id} style={{ marginBottom: 12 }}>
+              <div className="title">{s.name}</div>
+              <div className="sub"><a href={s.url} target="_blank" rel="noreferrer noopener">{s.url.replace('https://', '')}</a></div>
+              <div className="sub" style={{ marginTop: 4 }}>
+                {s.verdict === 'pending' ? 'Проверяем доступ и условия…' : s.decision === 'approved' ? 'Подключено.' : s.decision === 'declined' ? 'Вы решили не подключать.' : s.reasons.length ? s.reasons.join('; ') : 'Проверка пройдена.'}
+              </div>
+              {canDecide && !s.decision && (s.verdict === 'suitable' || s.verdict === 'review') && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                  <button className="btn small" onClick={() => decide([s.id], 'approve')}>Подключить</button>
+                  <button className="btn quiet small" onClick={() => decide([s.id], 'decline')}>Не подключать</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
       {summary?.length === 0 && <p className="muted">Пока пусто. Создайте поиск и выберите регион или провинцию — поиск агентств начнётся сам.</p>}
       {summary && summary.length > 1 && (
         <div className="chips" style={{ marginBottom: 16 }}>

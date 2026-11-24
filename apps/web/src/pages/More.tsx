@@ -2,6 +2,7 @@ import { startRegistration } from '@simplewebauthn/browser';
 import { useEffect, useState } from 'react';
 import { api, type User } from '../api';
 import { ErrorBox, Page } from '../ui';
+import { PushToggle } from './Extra';
 
 interface Passkey { id: string; name: string | null; created_at: string; last_used_at: string | null }
 interface InviteRow { role: string; note: string | null; expires_at: string; used_at: string | null; used_by_name: string | null; created_at: string }
@@ -61,8 +62,13 @@ export function More({ user, onLogout }: { user: User; onLogout: () => void }) {
 
       <ul className="list">
         <li><a href="#/favorites"><div><div className="title">Избранное</div><div className="sub">Объекты, за которыми вы следите</div></div></a></li>
+        <li><a href="#/portfolio"><div><div className="title">Портфель</div><div className="sub">Купленные объекты, факт против прогноза</div></div></a></li>
+        <li><a href="#/market"><div><div className="title">Аналитика рынка</div><div className="sub">Цены, аренда и доходность по городам</div></div></a></li>
         <li><a href="#/sources"><div><div className="title">Источники</div><div className="sub">Найденные агентства, проверка и подключение</div></div></a></li>
       </ul>
+
+      <h2>Уведомления</h2>
+      <PushToggle />
 
       <h2>Устройства для входа</h2>
       <ul className="list">

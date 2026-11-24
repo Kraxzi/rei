@@ -3,6 +3,7 @@ import { api, type User } from '../api';
 import { money, percent } from '../format';
 import { ErrorBox, go } from '../ui';
 import { ScoreBadge } from './Feed';
+import { AnalystBlock } from './Extra';
 
 interface Comp { value: number | null; weight: number; confidence: number; basis: string }
 interface PropertyData {
@@ -151,6 +152,8 @@ export function Property({ id, user }: { id: string; user: User }) {
           ))}
         </ul>
       )}
+
+      {main?.deal_type !== 'rent' && <AnalystBlock propertyId={p.id} />}
 
       <h2>Объявления</h2>
       <ul className="list">

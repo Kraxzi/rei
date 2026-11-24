@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api } from '../api';
 import { money, percent } from '../format';
 import { Chips } from '../ui';
+import { Compare } from './Extra';
 
 export interface Card {
   id: string; typeName: string; city: string | null; areaM2: number | null; rooms: number | null; price: number | null; dealType: string | null;
@@ -83,6 +84,8 @@ export function Feed() {
 
 export function Favorites() {
   const [items, setItems] = useState<Card[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [comparing, setComparing] = useState(false);
   useEffect(() => { api<Card[]>('/properties/favorites').then(setItems, () => setItems([])); }, []);
   return (
     <main className="page">
@@ -90,7 +93,24 @@ export function Favorites() {
       <h1 className="page-title">Избранное</h1>
       <p className="page-lead">Эти объекты проверяются чаще — раз в сутки: цена, снятие с продажи, новые фото.</p>
       {items?.length === 0 && <p className="muted">Пусто. Нажмите «В избранное» в карточке объекта.</p>}
-      <ul className="list props">{items?.map((c) => <PropertyCard key={c.id} c={c} />)}</ul>
+      {items && items.length > 1 && (
+        <p className="muted">Отметьте до 10 объектов, чтобы сравнить их рядом.</p>
+      )}
+      {comparing && items && <Compare items={items.filter((i) => picked.includes(i.id))} onClose={() => setComparing(false)} />}
+      <ul className="list props">
+        {items?.map((c) => (
+          <Fragment key={c.id}>
+            <PropertyCard c={c} />
+            {items.length > 1 && (
+              <label className="toggle" style={{ minHeight: 36, margin: '-4px 6px 10px', fontSize: 'var(--fs-sm)' }}>
+                Сравнить
+                <input type="checkbox" checked={picked.includes(c.id)} disabled={!picked.includes(c.id) && picked.length >= 10} onChange={(e) => setPicked(e.target.checked ? [...picked, c.id] : picked.filter((x) => x !== c.id))} />
+              </label>
+            )}
+          </Fragment>
+        ))}
+      </ul>
+      {picked.length >= 2 && !comparing && <button className="btn block" onClick={() => { setComparing(true); scrollTo({ top: 0, behavior: 'smooth' }); }}>Сравнить {picked.length}</button>}
     </main>
   );
 }

@@ -1,4 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
+  // DOM lib only for the WHATWG URL type, which exists in Workers, Node and browsers alike
+  "compilerOptions": { "lib": ["ES2022", "DOM"] },
   "include": ["src", "test"]
 }

@@ -7,3 +7,5 @@ export * from './financial/scenarios.js';
 export * from './financial/fx.js';
 export * from './geo/index.js';
 export * from './taxonomy/index.js';
+export * from './sources/robots.js';
+export * from './sources/audit.js';

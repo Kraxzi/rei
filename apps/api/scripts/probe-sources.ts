@@ -17,6 +17,17 @@ async function get(url: string) {
   } catch { return { status: null, text: null, headers: {} }; }
 }
 
+if (iso === 'DIAG') {
+  for (const url of [...OVERPASS_ENDPOINTS, 'https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass.osm.jp/api/interpreter']) {
+    const t = Date.now();
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'User-Agent': BOT_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent('[out:json][timeout:25];node["office"="estate_agent"](43.75,7.6,43.85,7.85);out tags center;'), signal: AbortSignal.timeout(60000) });
+      const body = await r.text();
+      console.log(`| ${url} | ${r.status} | ${Date.now() - t} ms | ${body.slice(0, 120).replace(/\s+/g, ' ')} |`);
+    } catch (e) { console.log(`| ${url} | error | ${Date.now() - t} ms | ${(e as Error).message} |`); }
+  }
+  process.exit(0);
+}
 let elements: OsmElement[] | null = null;
 for (const url of OVERPASS_ENDPOINTS) {
   try {

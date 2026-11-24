@@ -17,3 +17,5 @@ export * from './scoring/score.js';
 export * from './scoring/match.js';
 export * from './scoring/analyze.js';
 export * from './financial/portfolio.js';
+export * from './tax/italy.js';
+export * from './scoring/context.js';

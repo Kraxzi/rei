@@ -22,6 +22,7 @@ export interface ProjectionYear {
   gri: number;
   noi: number;
   debtService: number;
+  /** After debt service and tax on rent (if a rate is given). */
   cashFlow: number;
 }
 
@@ -55,7 +56,8 @@ export function project(input: YearOneInput, g: GrowthAssumptions, horizonYears:
     const gri = roundCents(input.gri * (1 + g.revenueGrowth) ** (t - 1));
     const st = operatingStatement(gri, input.operating, (1 + g.expenseGrowth) ** (t - 1));
     const debtService = input.loan ? annualDebtService(input.loan, t) : 0;
-    years.push({ year: t, gri, noi: st.noi, debtService, cashFlow: st.noi - debtService });
+    const tax = roundCents(Math.max(0, st.egi) * (input.incomeTaxRate ?? 0));
+    years.push({ year: t, gri, noi: st.noi, debtService, cashFlow: st.noi - debtService - tax });
   }
 
   const baseValue = g.currentValue ?? acq.price;

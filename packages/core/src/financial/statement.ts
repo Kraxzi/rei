@@ -94,6 +94,8 @@ export interface YearOneInput {
   gri: number;
   operating: OperatingInput;
   loan?: LoanInput;
+  /** Flat tax on collected rent (e.g. Italian cedolare secca). Applied to EGI; not part of NOI. */
+  incomeTaxRate?: number;
 }
 
 export interface YearOneResult {
@@ -112,6 +114,11 @@ export interface YearOneResult {
   equity: number;
   /** cashFlow / equity */
   cashOnCash: number | null;
+  /** Tax on rent (incomeTaxRate × EGI), 0 when no rate given. */
+  incomeTax: number;
+  cashFlowAfterTax: number;
+  /** (NOI - income tax) / total acquisition cost */
+  netYieldAfterTax: number | null;
 }
 
 export function yearOne(input: YearOneInput): YearOneResult {
@@ -120,7 +127,11 @@ export function yearOne(input: YearOneInput): YearOneResult {
   const debtService = input.loan ? annualDebtService(input.loan, 1) : 0;
   const equity = acquisition.total - (input.loan?.principal ?? 0);
   const cashFlow = statement.noi - debtService;
+  const incomeTax = roundCents(Math.max(0, statement.egi) * (input.incomeTaxRate ?? 0));
   return {
+    incomeTax,
+    cashFlowAfterTax: cashFlow - incomeTax,
+    netYieldAfterTax: safeRatio(statement.noi - incomeTax, acquisition.total),
     acquisition,
     statement,
     grossYield: safeRatio(input.gri, acquisition.price),

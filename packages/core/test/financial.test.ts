@@ -137,6 +137,18 @@ describe('acquisition & operating statement', () => {
   });
 });
 
+describe('tax on rent (cedolare secca)', () => {
+  it('reduces after-tax cash flow and yield, not NOI', () => {
+    const r = yearOne({ acquisition: { price: EUR(100_000) }, gri: EUR(10_000), operating: { vacancyRate: 0.1 }, incomeTaxRate: 0.21 });
+    expect(r.statement.noi).toBe(EUR(9_000));
+    expect(r.incomeTax).toBe(EUR(1_890)); // 21 % of collected rent 9 000
+    expect(r.cashFlowAfterTax).toBe(EUR(7_110));
+    expect(r.netYieldAfterTax).toBeCloseTo(0.0711, 10);
+    const p = project({ acquisition: { price: EUR(100_000) }, gri: EUR(10_000), operating: {}, incomeTaxRate: 0.21 }, { revenueGrowth: 0, expenseGrowth: 0, appreciation: 0, saleCostRate: 0, discountRate: 0.1 }, 1);
+    expect(p.years[0]!.cashFlow).toBe(EUR(7_900));
+  });
+});
+
 describe('projection', () => {
   const simple = { acquisition: { price: EUR(100_000) }, gri: EUR(10_000), operating: {} };
   const flat = { revenueGrowth: 0, expenseGrowth: 0, appreciation: 0, saleCostRate: 0, discountRate: 0.1 };

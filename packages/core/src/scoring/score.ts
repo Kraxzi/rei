@@ -25,8 +25,8 @@ export interface ScoreInput {
   category: string;
   undervaluation: { value: number; confidence: number } | null;
   netYield: { value: number; confidence: number } | null;
-  growth: { value: number; confidence: number } | null;
-  location: { value: number; confidence: number } | null;
+  growth: { value: number; confidence: number; basis?: string } | null;
+  location: { value: number; confidence: number; basis?: string } | null;
   liquidity: { comps: number; daysOnMarket: number | null } | null;
   condition: string | null;
   isAuction?: boolean;
@@ -67,10 +67,10 @@ export function computeScore(i: ScoreInput, override?: Partial<Weights>): ScoreR
     ? { value: clamp((i.netYield.value / 0.08) * 100), weight: w.yield, confidence: i.netYield.confidence, basis: `оценка чистой доходности ${pct(i.netYield.value)}` }
     : { value: null, weight: w.yield, confidence: 0, basis: 'нет данных об аренде для этого типа и места' };
   c.growth = i.growth
-    ? { value: clamp(50 + i.growth.value * 500), weight: w.growth, confidence: i.growth.confidence, basis: `динамика цен ${pct(i.growth.value)} в год` }
+    ? { value: clamp(50 + i.growth.value * 500), weight: w.growth, confidence: i.growth.confidence, basis: `цены на жильё по стране: ${i.growth.value >= 0 ? '+' : ''}${pct(i.growth.value)} в год${i.growth.basis ? ` (${i.growth.basis})` : ''}, не по району` }
     : { value: null, weight: w.growth, confidence: 0, basis: 'нет истории цен по району' };
   c.location = i.location
-    ? { value: clamp(i.location.value), weight: w.location, confidence: i.location.confidence, basis: 'инфраструктура рядом' }
+    ? { value: clamp(i.location.value), weight: w.location, confidence: i.location.confidence, basis: i.location.basis ?? 'инфраструктура рядом' }
     : { value: null, weight: w.location, confidence: 0, basis: 'анализ локации ещё не выполнен' };
   c.liquidity = i.liquidity
     ? {

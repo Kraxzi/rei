@@ -35,8 +35,6 @@ jobs:
         run: node scripts/ci-resolve-d1.mjs
       - name: Apply migrations
         run: npx wrangler d1 migrations apply rei --remote
-      - name: Deploy worker
-        run: npx wrangler deploy | tee deploy.log
       - name: Sync worker secrets
         env:
           BOOTSTRAP_CODE: ${{ secrets.BOOTSTRAP_CODE }}
@@ -46,6 +44,8 @@ jobs:
             val="${!name}"
             if [ -n "$val" ]; then printf '%s' "$val" | npx wrangler secret put "$name" >/dev/null && echo "secret $name synced"; else echo "secret $name not set in GitHub"; fi
           done
+      - name: Deploy worker
+        run: npx wrangler deploy | tee deploy.log
       - name: Smoke test
         run: |
           URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
@@ -53,5 +53,6 @@ jobs:
           curl -fsS "$URL/api/health" | tee /dev/stderr | grep -q '"propertyTypes":69'
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/profiles")" = 401
           curl -fsS "$URL/api/auth/me"
+          for p in / /index.html /manifest.webmanifest /sw.js; do echo "$p -> $(curl -s -o /dev/null -w '%{http_code}' "$URL$p")"; done
           curl -fsS "$URL/" | grep -q '<div id="root">'
           curl -fsS "$URL/manifest.webmanifest" | grep -q '"display": "standalone"'

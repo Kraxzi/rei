@@ -29,15 +29,29 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - name: Build PWA
+        run: pnpm --filter @rei/web build
       - name: Resolve / create D1 database
         run: node scripts/ci-resolve-d1.mjs
       - name: Apply migrations
         run: npx wrangler d1 migrations apply rei --remote
       - name: Deploy worker
         run: npx wrangler deploy | tee deploy.log
+      - name: Sync worker secrets
+        env:
+          BOOTSTRAP_CODE: ${{ secrets.BOOTSTRAP_CODE }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          for name in BOOTSTRAP_CODE GEMINI_API_KEY; do
+            val="${!name}"
+            if [ -n "$val" ]; then printf '%s' "$val" | npx wrangler secret put "$name" >/dev/null && echo "secret $name synced"; else echo "secret $name not set in GitHub"; fi
+          done
       - name: Smoke test
         run: |
           URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
           echo "URL: $URL"
           curl -fsS "$URL/api/health" | tee /dev/stderr | grep -q '"propertyTypes":69'
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/profiles")" = 401
+          curl -fsS "$URL/api/auth/me"
+          curl -fsS "$URL/" | grep -q '<div id="root">'
+          curl -fsS "$URL/manifest.webmanifest" | grep -q '"display": "standalone"'

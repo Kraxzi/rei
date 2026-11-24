@@ -59,6 +59,13 @@ export interface AgencyCandidate {
   city: string | null;
 }
 
+/** Public Overpass instances, tried in order (the main one is often overloaded). */
+export const OVERPASS_ENDPOINTS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
+];
+
 export function overpassQuery(iso3166_2: string): string {
   return `[out:json][timeout:90];
 area["ISO3166-2"="${iso3166_2}"]->.a;

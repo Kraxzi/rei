@@ -1,11 +1,10 @@
-import { auditSource, BOT_USER_AGENT, candidatesFromOsm, overpassQuery, type AuditInput, type OsmElement } from '@rei/core';
+import { auditSource, BOT_USER_AGENT, candidatesFromOsm, OVERPASS_ENDPOINTS, overpassQuery, type AuditInput, type OsmElement } from '@rei/core';
 import { aiJson } from '../ai/provider.js';
 import type { Env } from '../env.js';
 import { nowIso, parseJson, ulid } from '../lib/util.js';
 
 export type Job = { type: 'discover'; discoveryId: string } | { type: 'audit'; sourceId: string };
 
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
 const MAX_HTML = 300_000;
 const REDISCOVER_DAYS = 30;
 
@@ -31,6 +30,25 @@ async function get(deps: Deps, url: string): Promise<{ status: number | null; te
   } catch {
     return { status: null, text: null, headers: {} };
   }
+}
+
+async function overpass(deps: Deps, query: string): Promise<OsmElement[]> {
+  const errors: string[] = [];
+  for (const url of OVERPASS_ENDPOINTS) {
+    try {
+      const res = await deps.fetch(url, {
+        method: 'POST',
+        headers: { 'User-Agent': BOT_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!res.ok) { errors.push(`${new URL(url).host} HTTP ${res.status}`); continue; }
+      return ((await res.json()) as { elements?: OsmElement[] }).elements ?? [];
+    } catch (e) {
+      errors.push(`${new URL(url).host} ${(e as Error).message}`);
+    }
+  }
+  throw new Error(`Overpass unavailable: ${errors.join('; ')}`);
 }
 
 /** Starts discovery for the given regions unless one ran recently or is in progress. Returns created discovery ids. */
@@ -67,14 +85,7 @@ export async function runDiscovery(env: Env, deps: Deps, discoveryId: string): P
   await env.DB.prepare("UPDATE region_discoveries SET status = 'running' WHERE id = ?1").bind(d.id).run();
 
   try {
-    const res = await deps.fetch(OVERPASS_URL, {
-      method: 'POST',
-      headers: { 'User-Agent': BOT_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: `data=${encodeURIComponent(overpassQuery(d.iso_code))}`,
-      signal: AbortSignal.timeout(100_000),
-    });
-    if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-    const { elements } = (await res.json()) as { elements: OsmElement[] };
+    const elements = await overpass(deps, overpassQuery(d.iso_code));
     const { candidates, withoutWebsite, excluded } = candidatesFromOsm(elements ?? []);
 
     const now = nowIso();

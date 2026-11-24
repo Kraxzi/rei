@@ -35,7 +35,7 @@ let calls: string[];
 const fakeFetch: typeof fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
   calls.push(url);
-  if (url.startsWith('https://overpass-api.de/')) {
+  if (url.includes('/api/interpreter')) {
     expect(String(init?.body)).toContain(encodeURIComponent('"ISO3166-2"="IT-IM"'));
     return Response.json(OVERPASS);
   }
@@ -109,6 +109,13 @@ describe('discovery & audit pipeline', () => {
     const before = calls.length;
     await handleJob(env, deps, { type: 'audit', sourceId: mare!.id });
     expect(calls.length).toBe(before);
+  });
+
+  it('falls back to another Overpass instance', async () => {
+    const flaky: Deps = { ...deps, fetch: async (input, init) => (String(input).includes('overpass-api.de') ? new Response('busy', { status: 504 }) : fakeFetch(input, init)) };
+    await requestDiscovery(env, flaky, ['it-p-im'], 'u1');
+    while (q.messages.length) await handleJob(env, flaky, q.messages.shift()!);
+    expect(await env.DB.prepare('SELECT found FROM region_discoveries').first('found')).toBe(4);
   });
 
   it('Overpass failure marks the discovery as error and rethrows for retry', async () => {

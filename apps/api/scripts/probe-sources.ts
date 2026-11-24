@@ -3,7 +3,7 @@
  * Overpass for an ISO region -> audit each agency site exactly like the worker does (without the AI terms step).
  * Usage: tsx scripts/probe-sources.ts IT-IM [limit]
  */
-import { auditSource, BOT_USER_AGENT, candidatesFromOsm, overpassQuery, type OsmElement } from '@rei/core';
+import { auditSource, BOT_USER_AGENT, candidatesFromOsm, OVERPASS_ENDPOINTS, overpassQuery, type OsmElement } from '@rei/core';
 
 const iso = process.argv[2] ?? 'IT-IM';
 const limit = Number(process.argv[3] ?? 60);
@@ -17,11 +17,15 @@ async function get(url: string) {
   } catch { return { status: null, text: null, headers: {} }; }
 }
 
-const res = await fetch('https://overpass-api.de/api/interpreter', {
-  method: 'POST', headers: { 'User-Agent': BOT_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
-  body: `data=${encodeURIComponent(overpassQuery(iso))}`,
-});
-const { elements } = (await res.json()) as { elements: OsmElement[] };
+let elements: OsmElement[] | null = null;
+for (const url of OVERPASS_ENDPOINTS) {
+  try {
+    const res = await fetch(url, { method: 'POST', headers: { 'User-Agent': BOT_USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(overpassQuery(iso))}`, signal: AbortSignal.timeout(90000) });
+    if (res.ok) { elements = ((await res.json()) as { elements: OsmElement[] }).elements; console.error(`overpass: ${url}`); break; }
+    console.error(`overpass ${url}: HTTP ${res.status}`);
+  } catch (e) { console.error(`overpass ${url}: ${(e as Error).message}`); }
+}
+if (!elements) throw new Error('all Overpass endpoints failed');
 const { candidates, withoutWebsite, excluded } = candidatesFromOsm(elements);
 const lines = [`## ${iso}: OSM elements ${elements.length}, with own site ${candidates.length}, without site ${withoutWebsite}, portals ${excluded}`, '', '|agency|site|verdict|platform|links|jsonld|terms link|reasons|', '|---|---|---|---|---|---|---|---|'];
 const tally: Record<string, number> = {};

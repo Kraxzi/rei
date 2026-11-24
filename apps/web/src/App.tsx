@@ -5,6 +5,7 @@ import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { More } from './pages/More';
 import { ProfileEdit, ProfilesList } from './pages/Profiles';
+import { Sources } from './pages/Sources';
 import { useRoute } from './ui';
 
 const I = {
@@ -42,6 +43,7 @@ export function App() {
   if (route === '/profiles') page = <ProfilesList />;
   else if (m) page = <ProfileEdit key={m[1]} id={m[1] === 'new' ? null : m[1]!} />;
   else if (route === '/calc') page = <Calculator />;
+  else if (route === '/sources') page = <Sources user={me.user} />;
   else if (route === '/more') page = <More user={me.user} onLogout={() => { setMe({ ...me, user: null }); refresh(); }} />;
   else page = <Home user={me.user} />;
 

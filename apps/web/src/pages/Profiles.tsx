@@ -97,8 +97,8 @@ export function ProfileEdit({ id }: { id: string | null }) {
       notify: { ...p.notify, minScore: parsed.minScore ?? undefined },
     };
     try {
-      await api(id ? `/profiles/${id}` : '/profiles', { method: id ? 'PUT' : 'POST', body });
-      go('/profiles');
+      const saved = await api<{ discoveryStarted?: number }>(id ? `/profiles/${id}` : '/profiles', { method: id ? 'PUT' : 'POST', body });
+      go(saved.discoveryStarted ? '/' : '/profiles');
     } catch (e) {
       const issues = e instanceof ApiError ? (e.body as { issues?: Array<{ path: string[]; message: string }> })?.issues : null;
       setError(issues?.length ? `Не сохранено: ${issues.map((i) => `${i.path.join('.')} — ${i.message}`).join('; ')}` : `Не сохранено: ${(e as Error).message}`);
@@ -152,6 +152,7 @@ export function ProfileEdit({ id }: { id: string | null }) {
           </div>
         )}
         {p.countries.some((c) => c !== 'IT') && <p className="muted">Регионы других стран добавятся, когда подключим их источники.</p>}
+        <p className="muted" style={{ marginBottom: 14 }}>После сохранения REI сам найдёт агентства в выбранных регионах и проверит их сайты. Список для одобрения появится на главной.</p>
       </section>
 
       <section className="group">

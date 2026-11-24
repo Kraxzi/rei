@@ -59,6 +59,10 @@ export function More({ user, onLogout }: { user: User; onLogout: () => void }) {
     <Page title="Ещё">
       <ErrorBox error={error} />
 
+      <ul className="list">
+        <li><a href="#/sources"><div><div className="title">Источники</div><div className="sub">Найденные агентства, проверка и подключение</div></div></a></li>
+      </ul>
+
       <h2>Устройства для входа</h2>
       <ul className="list">
         {keys.map((k) => (

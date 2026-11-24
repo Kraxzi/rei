@@ -57,6 +57,8 @@ export interface DedupItem {
   city: string | null;
   text: string;
   images: string[];
+  /** Coordinates are of the property itself (not of its city centre). */
+  geoExact?: boolean;
 }
 
 export interface DedupResult {
@@ -89,7 +91,9 @@ export function duplicateProbability(a: DedupItem, b: DedupItem): DedupResult {
   if (a.lat !== null && a.lng !== null && b.lat !== null && b.lng !== null) {
     const d = haversine({ lat: a.lat, lng: a.lng }, { lat: b.lat, lng: b.lng });
     if (d > 2000) return { probability: 0, signals: { distance: -1 } };
-    signals.distance = d <= 60 ? 0.3 : d <= 300 ? 0.15 : 0;
+    // city-centre coordinates say nothing about being the same building
+    signals.distance = a.geoExact && b.geoExact ? (d <= 60 ? 0.3 : d <= 300 ? 0.15 : 0) : 0;
+    if (!(a.geoExact && b.geoExact) && a.city && b.city && a.city.toLowerCase() === b.city.toLowerCase()) signals.city = 0.05;
   } else if (a.city && b.city) {
     if (a.city.toLowerCase() !== b.city.toLowerCase()) return { probability: 0, signals: { city: -1 } };
     signals.city = 0.05;
@@ -110,7 +114,9 @@ export function duplicateProbability(a: DedupItem, b: DedupItem): DedupResult {
   const shared = b.images.map(fileName).filter((f) => imgA.has(f)).length;
   signals.images = shared >= 2 ? 0.3 : shared === 1 ? 0.1 : 0;
 
-  const p = Math.max(0, Math.min(1, Object.values(signals).reduce((s, x) => s + x, 0)));
+  let p = Math.max(0, Math.min(1, Object.values(signals).reduce((s, x) => s + x, 0)));
+  // automatic merging needs physical evidence (same photos or the same exact spot); otherwise at most "review"
+  if (!(signals.images ?? 0) && !(signals.distance ?? 0)) p = Math.min(p, 0.8);
   return { probability: Math.round(p * 100) / 100, signals };
 }
 

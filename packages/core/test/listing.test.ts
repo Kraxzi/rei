@@ -123,7 +123,7 @@ describe('monitoring events', () => {
 });
 
 describe('duplicates', () => {
-  const a: DedupItem = { typeCode: 'apartment', dealType: 'sale', price: 250_000_00, areaM2: 80, rooms: 3, lat: 43.815, lng: 7.776, city: 'Sanremo', text: 'Trilocale luminoso con terrazzo vista mare zona centrale vicino stazione', images: ['https://a.it/u/IMG_1234.jpg', 'https://a.it/u/IMG_1235.jpg'] };
+  const a: DedupItem = { geoExact: true, typeCode: 'apartment', dealType: 'sale', price: 250_000_00, areaM2: 80, rooms: 3, lat: 43.815, lng: 7.776, city: 'Sanremo', text: 'Trilocale luminoso con terrazzo vista mare zona centrale vicino stazione', images: ['https://a.it/u/IMG_1234.jpg', 'https://a.it/u/IMG_1235.jpg'] };
 
   it('same flat on two agencies → high probability', () => {
     const b = { ...a, price: 249_000_00, areaM2: 81, lat: 43.8152, lng: 7.7762, text: 'Trilocale luminoso con terrazzo e vista mare in zona centrale', images: ['https://b.it/media/IMG_1234.jpg', 'https://b.it/media/IMG_1235.jpg'] };
@@ -133,6 +133,18 @@ describe('duplicates', () => {
   it('similar but different flats → review range or below', () => {
     const c = { ...a, areaM2: 95, rooms: 4, price: 320_000_00, text: 'Quadrilocale', images: [], lat: 43.817, lng: 7.779 };
     expect(duplicateProbability(a, c).probability).toBeLessThan(0.55);
+  });
+
+  it('city-level coordinates give no proximity bonus', () => {
+    const twin = { ...a, geoExact: false, images: [], text: 'Trilocale' };
+    const r = duplicateProbability({ ...a, geoExact: false, images: [] }, twin);
+    expect(r.signals.distance).toBe(0);
+    expect(r.probability).toBeLessThan(0.85);
+  });
+
+  it('identical-looking text without shared photos or exact location goes to review, not merge', () => {
+    const r = duplicateProbability({ ...a, geoExact: false, images: [] }, { ...a, geoExact: false, images: [] });
+    expect(r.probability).toBe(0.8);
   });
 
   it('hard stops: other deal type, other category, far away, other city', () => {

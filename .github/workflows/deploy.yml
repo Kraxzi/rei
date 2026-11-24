@@ -34,4 +34,10 @@ jobs:
       - name: Apply migrations
         run: npx wrangler d1 migrations apply rei --remote
       - name: Deploy worker
-        run: npx wrangler deploy
+        run: npx wrangler deploy | tee deploy.log
+      - name: Smoke test
+        run: |
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          echo "URL: $URL"
+          curl -fsS "$URL/api/health" | tee /dev/stderr | grep -q '"propertyTypes":69'
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/profiles")" = 401

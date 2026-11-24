@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { secureHeaders } from 'hono/secure-headers';
 import type { AppEnv } from './env.js';
 import { requireUser } from './lib/auth.js';
+import { auth } from './routes/auth.js';
 import { calc } from './routes/calc.js';
 import { profiles } from './routes/profiles.js';
 import { reference } from './routes/reference.js';
@@ -16,6 +17,7 @@ app.get('/api/health', async (c) => {
   return c.json({ ok: true, env: c.env.ENVIRONMENT, propertyTypes: db?.n ?? 0, time: new Date().toISOString() });
 });
 
+app.route('/api/auth', auth);
 app.use('/api/*', requireUser);
 app.route('/api/ref', reference);
 app.route('/api/profiles', profiles);

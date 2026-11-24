@@ -76,6 +76,17 @@ area["ISO3166-2"="${iso3166_2}"]->.a;
 out tags center;`;
 }
 
+/** Cheaper fallback when area queries time out on overloaded public instances. bbox = [south, west, north, east]. */
+export function overpassQueryBbox(b: [number, number, number, number]): string {
+  const box = b.join(',');
+  return `[out:json][timeout:60];
+(
+  nwr["office"="estate_agent"](${box});
+  nwr["shop"="estate_agent"](${box});
+);
+out tags center;`;
+}
+
 /** Turns Overpass elements into unique agency candidates with their own website (portal pages dropped). */
 export function candidatesFromOsm(elements: OsmElement[]): { candidates: AgencyCandidate[]; withoutWebsite: number; excluded: number } {
   const byOrigin = new Map<string, AgencyCandidate>();

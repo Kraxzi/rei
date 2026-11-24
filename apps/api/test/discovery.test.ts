@@ -118,6 +118,15 @@ describe('discovery & audit pipeline', () => {
     expect(await env.DB.prepare('SELECT found FROM region_discoveries').first('found')).toBe(4);
   });
 
+  it('falls back to a bbox query when area queries fail everywhere', async () => {
+    const areaFails: Deps = { ...deps, fetch: async (input, init) => (String(init?.body ?? '').includes('ISO3166-2') ? new Response('busy', { status: 504 }) : fakeFetch(input, init)) };
+    // fakeFetch asserts the ISO area; bypass that for the bbox body
+    const bboxFetch: Deps = { ...areaFails, fetch: async (input, init) => (String(init?.body ?? '').includes('ISO3166-2') ? new Response('busy', { status: 504 }) : String(input).includes('/api/interpreter') ? Response.json(OVERPASS) : fakeFetch(input, init)) };
+    await requestDiscovery(env, bboxFetch, ['it-p-im'], 'u1');
+    while (q.messages.length) await handleJob(env, bboxFetch, q.messages.shift()!);
+    expect(await env.DB.prepare('SELECT status, found FROM region_discoveries').first()).toEqual({ status: 'done', found: 4 });
+  });
+
   it('Overpass failure marks the discovery as error and rethrows for retry', async () => {
     const failing: Deps = { ...deps, fetch: async () => new Response('busy', { status: 429 }) };
     const [id] = await requestDiscovery(env, failing, ['it-p-im'], 'u1');

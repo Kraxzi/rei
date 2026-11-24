@@ -1,4 +1,4 @@
-import { auditSource, BOT_USER_AGENT, candidatesFromOsm, OVERPASS_ENDPOINTS, overpassQuery, type AuditInput, type OsmElement } from '@rei/core';
+import { auditSource, BOT_USER_AGENT, candidatesFromOsm, OVERPASS_ENDPOINTS, overpassQuery, overpassQueryBbox, type AuditInput, type OsmElement } from '@rei/core';
 import { aiJson } from '../ai/provider.js';
 import type { Env } from '../env.js';
 import { nowIso, parseJson, ulid } from '../lib/util.js';
@@ -77,15 +77,22 @@ export async function requestDiscovery(env: Env, deps: Deps, regionIds: string[]
 /** Overpass → candidate sources (status candidate, verdict pending) → one audit job per new candidate. */
 export async function runDiscovery(env: Env, deps: Deps, discoveryId: string): Promise<void> {
   const d = await env.DB.prepare(
-    'SELECT d.id, d.region_id, r.iso_code, r.country_code FROM region_discoveries d JOIN regions r ON r.id = d.region_id WHERE d.id = ?1',
+    'SELECT d.id, d.region_id, r.iso_code, r.country_code, r.bbox FROM region_discoveries d JOIN regions r ON r.id = d.region_id WHERE d.id = ?1',
   )
     .bind(discoveryId)
-    .first<{ id: string; region_id: string; iso_code: string; country_code: string }>();
+    .first<{ id: string; region_id: string; iso_code: string; country_code: string; bbox: string | null }>();
   if (!d) return;
   await env.DB.prepare("UPDATE region_discoveries SET status = 'running' WHERE id = ?1").bind(d.id).run();
 
   try {
-    const elements = await overpass(deps, overpassQuery(d.iso_code));
+    let elements: OsmElement[];
+    try {
+      elements = await overpass(deps, overpassQuery(d.iso_code));
+    } catch (e) {
+      const bbox = parseJson<[number, number, number, number] | null>(d.bbox, null);
+      if (!bbox) throw e;
+      elements = await overpass(deps, overpassQueryBbox(bbox));
+    }
     const { candidates, withoutWebsite, excluded } = candidatesFromOsm(elements ?? []);
 
     const now = nowIso();

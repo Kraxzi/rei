@@ -135,3 +135,10 @@ describe('audit verdict', () => {
     expect(auditSource({ ...base, homeStatus: null, homeHtml: null }).verdict).toBe('review');
   });
 });
+
+describe('overpass bbox fallback', () => {
+  it('builds a bbox query', async () => {
+    const { overpassQueryBbox } = await import('../src/index.js');
+    expect(overpassQueryBbox([43.75, 7.49, 44.18, 8.17])).toContain('["office"="estate_agent"](43.75,7.49,44.18,8.17)');
+  });
+});

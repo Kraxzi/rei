@@ -2,6 +2,7 @@ import { startRegistration } from '@simplewebauthn/browser';
 import { useEffect, useState } from 'react';
 import { api, type User } from '../api';
 import { ErrorBox, Page } from '../ui';
+import { REGIME_LABEL } from './Calculator';
 import { PushToggle } from './Extra';
 
 interface Passkey { id: string; name: string | null; created_at: string; last_used_at: string | null }
@@ -70,6 +71,8 @@ export function More({ user, onLogout }: { user: User; onLogout: () => void }) {
       <h2>Уведомления</h2>
       <PushToggle />
 
+      <TaxProfile />
+
       <h2>Устройства для входа</h2>
       <ul className="list">
         {keys.map((k) => (
@@ -125,5 +128,44 @@ export function More({ user, onLogout }: { user: User; onLogout: () => void }) {
       <p className="muted">{user.displayName}, {user.role === 'owner' ? 'владелец' : user.role === 'admin' ? 'администратор' : 'пользователь'}.</p>
       <button className="btn danger block" onClick={logout}>Выйти</button>
     </Page>
+  );
+}
+
+interface TaxProfileData { buyer: 'individual' | 'company'; firstHome: boolean; rentalRegime: string }
+
+/** Tax situation used by the automatic analysis of every offer (Italy). */
+function TaxProfile() {
+  const [p, setP] = useState<TaxProfileData | null>(null);
+  const [canEdit, setCanEdit] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { api<{ profile: TaxProfileData; canEdit: boolean }>('/settings/tax').then((r) => { setP(r.profile); setCanEdit(r.canEdit); }, (e: Error) => setError(e.message)); }, []);
+  if (!p) return <ErrorBox error={error} />;
+  async function save(next: TaxProfileData) {
+    setP(next); setSaved(false); setError(null);
+    try { await api('/settings/tax', { method: 'PUT', body: next }); setSaved(true); } catch (e) { setError((e as Error).message); }
+  }
+  return (
+    <>
+      <h2>Налоги в оценке объектов</h2>
+      <p className="muted">Как считать налоги для всех найденных объектов в Италии. После изменения оценки пересчитаются в течение нескольких часов.</p>
+      <label className="field">
+        <span>Покупатель</span>
+        <select className="input" disabled={!canEdit} value={p.buyer} onChange={(e) => save({ ...p, buyer: e.target.value as TaxProfileData['buyer'] })}>
+          <option value="individual">Физическое лицо</option>
+          <option value="company">Компания</option>
+        </select>
+      </label>
+      <label className="toggle">Покупка как первое жильё («prima casa»)<input type="checkbox" disabled={!canEdit} checked={p.firstHome} onChange={(e) => save({ ...p, firstHome: e.target.checked })} /></label>
+      <label className="field">
+        <span>Налог с аренды</span>
+        <select className="input" disabled={!canEdit} value={p.rentalRegime} onChange={(e) => save({ ...p, rentalRegime: e.target.value })}>
+          {Object.entries(REGIME_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+      </label>
+      {saved && <p className="muted">Сохранено.</p>}
+      {!canEdit && <p className="muted">Менять может владелец.</p>}
+      <ErrorBox error={error} />
+    </>
   );
 }

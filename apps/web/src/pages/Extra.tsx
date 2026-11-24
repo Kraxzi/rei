@@ -182,11 +182,22 @@ export function Market() {
   const { data: regions } = useRegions('IT');
   const { data: provinces } = useRegions('IT', 'it-r-07');
   const [region, setRegion] = useState('it-r-07');
-  const [data, setData] = useState<{ rows: MarketRow[]; note: string } | null>(null);
-  useEffect(() => { setData(null); api<{ rows: MarketRow[]; note: string }>(`/market?region=${region}`).then(setData, () => setData({ rows: [], note: '' })); }, [region]);
+  type Hpi = { series: Array<{ period: string; value: number }>; growth: { value: number; basis: string } | null; source: string };
+  const [data, setData] = useState<{ rows: MarketRow[]; note: string; hpi?: Hpi } | null>(null);
+  useEffect(() => { setData(null); api<{ rows: MarketRow[]; note: string; hpi?: Hpi }>(`/market?region=${region}`).then(setData, () => setData({ rows: [], note: '' })); }, [region]);
   const options = [...(regions ?? []).filter((r) => r.id === 'it-r-07'), ...(provinces ?? [])] as Region[];
   return (
     <Page title="Аналитика рынка" back="/more" lead="Медианы цен и аренды по собранным объявлениям: одна методика для всех строк. Гаражи и места считаются за штуку, остальное — за м².">
+      {data?.hpi?.growth && (
+        <section className="group">
+          <h3>Цены на жильё в Италии</h3>
+          <p style={{ marginTop: 0 }}>В среднем {data.hpi.growth.value >= 0 ? '+' : ''}{percent(data.hpi.growth.value, 1)} в год за {data.hpi.growth.basis}.</p>
+          <p className="muted num" style={{ fontSize: 'var(--fs-sm)' }}>
+            {data.hpi.series.slice(-6).map((r) => `${r.period}: ${r.value >= 0 ? '+' : ''}${r.value.toLocaleString('ru-RU')} %`).join(', ')}.{' '}
+            Индекс цен Eurostat по всей стране (все сделки с жильём), не по городу. <a href={data.hpi.source} target="_blank" rel="noreferrer">Источник</a>.
+          </p>
+        </section>
+      )}
       <Chips single options={options.map((r) => ({ value: r.id, label: r.name }))} selected={[region]} onChange={(v) => setRegion(v[0]!)} />
       {data && data.rows.length === 0 && <p className="muted" style={{ marginTop: 16 }}>Данных пока нет — они появятся после сканирования подключённых источников.</p>}
       {data && data.rows.length > 0 && (

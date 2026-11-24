@@ -9,10 +9,20 @@ interface YearOne {
   acquisition: { price: number; lines: Record<string, number>; total: number };
   statement: { gri: number; vacancyLoss: number; egi: number; expenses: Record<string, number>; totalExpenses: number; noi: number };
   grossYield: number | null; netYield: number | null; capRate: number | null; debtService: number; cashFlow: number; equity: number; cashOnCash: number | null;
+  incomeTax: number; cashFlowAfterTax: number; netYieldAfterTax: number | null;
+}
+interface TaxBlock {
+  purchase: { lines: Array<{ key: string; label: string; amount: number; basis: string }>; total: number; estimated: boolean; applied: boolean };
+  imu: { amount: number; cadastralCategory: string; rate: number; applied: boolean; mainResidence: boolean } | null;
+  rental: { regime: string; rate: number | null; note: string; applied: boolean };
+  warnings: string[];
+  sources: Array<{ title: string; url: string }>;
+  verifiedAt: string;
 }
 interface CalcResult {
   engineVersion: string;
   modelMetrics: Record<string, number | null>;
+  tax: TaxBlock | null;
   scenarios: Array<{ scenario: 'pessimistic' | 'base' | 'optimistic'; yearOne: YearOne; horizons: ProjectionResult[] }>;
   assumptions: Array<{ key: string; value: number | string; unit?: string; source: string }>;
   disclaimer: string;
@@ -38,6 +48,14 @@ const ASSUMPTION_LABEL: Record<string, string> = {
   appreciation: 'Рост стоимости в год', saleCostRate: 'Расходы на продажу', discountRate: 'Ставка дисконтирования',
 };
 
+export const REGIME_LABEL: Record<string, string> = {
+  long_ordinary: 'Долгосрочная, cedolare 21 %',
+  long_concordato: 'Долгосрочная «canone concordato», cedolare 10 %',
+  short_first: 'Посуточная, первый объект — 21 %',
+  short_second: 'Посуточная, второй объект — 26 %',
+  irpef: 'Обычный IRPEF (не считаю — зависит от всех доходов)',
+};
+
 function formatAssumption(a: { value: number | string; unit?: string }): string {
   if (typeof a.value !== 'number') return a.value;
   if (a.unit?.startsWith('cents')) return money(a.value);
@@ -56,7 +74,7 @@ function convert(kind: ModelField['kind'], v: string): number | null {
 
 const ACQ: ModelField[] = [
   { key: 'price', label: 'Цена покупки', kind: 'money', required: true },
-  { key: 'purchaseTaxRate', label: 'Налог на покупку', kind: 'percent', hint: 'Введите сами: ставки по странам ещё не проверены и не подставляются.' },
+  { key: 'purchaseTaxRate', label: 'Налог на покупку', kind: 'percent', hint: 'Для Италии считается сам по правилам ниже. Введите, только чтобы заменить расчёт своей ставкой.' },
   { key: 'notaryFees', label: 'Нотариус', kind: 'money' },
   { key: 'agencyFeeRate', label: 'Комиссия агентства', kind: 'percent' },
   { key: 'renovation', label: 'Ремонт', kind: 'money' },
@@ -67,7 +85,7 @@ const OPS: ModelField[] = [
   { key: 'managementRate', label: 'Управление', kind: 'percent', hint: 'от собранной аренды' },
   { key: 'capexReserveRate', label: 'Резерв на крупный ремонт', kind: 'percent', hint: 'от аренды' },
   { key: 'insurance', label: 'Страховка в год', kind: 'money' },
-  { key: 'holdingTax', label: 'Налог на владение в год (IMU и т.п.)', kind: 'money' },
+  { key: 'holdingTax', label: 'Налог на владение в год (IMU и т.п.)', kind: 'money', hint: 'Для Италии считается из кадастровой ренты, если она указана в «Налогах».' },
   { key: 'maintenance', label: 'Обслуживание и кондоминиум в год', kind: 'money' },
   { key: 'utilities', label: 'Коммунальные за счёт владельца в год', kind: 'money' },
 ];
@@ -133,6 +151,17 @@ export function Calculator() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [horizon, setHorizon] = useState(2); // index into [1,3,5]
+  const [taxCountry, setTaxCountry] = useState<'IT' | 'other'>('IT');
+  const [firstHome, setFirstHome] = useState(false);
+  const [seller, setSeller] = useState<'private' | 'vat_company'>('private');
+  const [regime, setRegime] = useState('long_ordinary');
+  const [taxv, setTaxv] = useState<Values>({ rendita: '', cadastralCategory: '', imuRate: '', incomeTaxRate: '' });
+  const [hpi, setHpi] = useState<{ value: number; basis: string } | null>(null);
+
+  useEffect(() => {
+    api<{ profile: { firstHome: boolean; rentalRegime: string } }>('/settings/tax').then((r) => { setFirstHome(r.profile.firstHome); setRegime(r.profile.rentalRegime); }).catch(() => {});
+    api<{ growth: { value: number; basis: string } | null }>('/market/hpi').then((r) => setHpi(r.growth)).catch(() => {});
+  }, []);
 
   // prefill from a property card: #/calc?type=garage&price=28000&rent=120
   useEffect(() => {
@@ -155,6 +184,7 @@ export function Calculator() {
 
   const type = useMemo(() => tax?.categories.flatMap((c) => c.types).find((t) => t.code === typeCode), [tax, typeCode]);
   const form = MODEL_FORMS[model];
+  const typeCategory = useMemo(() => tax?.categories.find((c) => c.types.some((t) => t.code === typeCode))?.code, [tax, typeCode]);
 
   function pickType(code: string) {
     setTypeCode(code);
@@ -175,8 +205,16 @@ export function Calculator() {
       { key: 'annualRate', label: 'Ставка кредита', kind: 'percent', required: true },
       { key: 'years', label: 'Срок кредита', kind: 'int', required: true },
     ], loan) : null;
+    const t = collect([
+      { key: 'rendita', label: 'Кадастровая рента', kind: 'money' },
+      { key: 'imuRate', label: 'Ставка IMU', kind: 'percent' },
+      { key: 'incomeTaxRate', label: 'Налог с аренды', kind: 'percent' },
+    ], taxv);
     const missing = [...m.missing, ...a.missing, ...(l?.missing ?? [])];
-    const invalid = [...m.invalid, ...a.invalid, ...o.invalid, ...g.invalid, ...(l?.invalid ?? [])];
+    const invalid = [...m.invalid, ...a.invalid, ...o.invalid, ...g.invalid, ...t.invalid, ...(l?.invalid ?? [])];
+    const taxBody = taxCountry === 'IT'
+      ? { tax: { country: 'IT', typeCode, firstHome, seller, rentalRegime: regime, rendita: t.out.rendita, imuRate: t.out.imuRate, cadastralCategory: taxv.cadastralCategory?.trim().toUpperCase() || undefined } }
+      : { incomeTaxRate: t.out.incomeTaxRate };
 
     let modelInput: Record<string, unknown> = m.out;
     if (model === 'commercial_lease') {
@@ -194,7 +232,7 @@ export function Calculator() {
     try {
       const r = await api<CalcResult>('/calc', {
         method: 'POST',
-        body: { model, modelInput, acquisition: a.out, operating: o.out, loan: l?.out, growth: g.out },
+        body: { model, modelInput, acquisition: a.out, operating: o.out, loan: l?.out, growth: g.out, ...taxBody },
       });
       setResult(r);
       requestAnimationFrame(() => document.getElementById('result')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -255,6 +293,55 @@ export function Calculator() {
             <Inputs fields={ACQ} values={acq} onChange={setAcq} />
           </section>
 
+          <details className="group" open>
+            <summary>Налоги</summary>
+            <label className="field">
+              <span>Правила</span>
+              <select className="input" value={taxCountry} onChange={(e) => setTaxCountry(e.target.value as 'IT' | 'other')}>
+                <option value="IT">Италия — считать автоматически</option>
+                <option value="other">Другая страна — введу сам</option>
+              </select>
+            </label>
+            {taxCountry === 'IT' ? (
+              <>
+                {typeCategory === 'residential' && (
+                  <label className="toggle">Первое жильё («prima casa»)<input type="checkbox" checked={firstHome} onChange={(e) => setFirstHome(e.target.checked)} /></label>
+                )}
+                <label className="field">
+                  <span>Продавец</span>
+                  <select className="input" value={seller} onChange={(e) => setSeller(e.target.value as 'private' | 'vat_company')}>
+                    <option value="private">Частник или фирма без НДС</option>
+                    <option value="vat_company">Застройщик (с НДС, IVA)</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Налог с аренды</span>
+                  <select className="input" value={regime} onChange={(e) => setRegime(e.target.value)}>
+                    {Object.entries(REGIME_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </label>
+                <Inputs
+                  fields={[
+                    { key: 'rendita', label: 'Кадастровая рента в год', kind: 'money', hint: 'Из visura catastale или у агента. С ней налог на покупку точнее (обычно ниже), и считается IMU.' },
+                    { key: 'imuRate', label: 'Ставка IMU коммуны', kind: 'percent', hint: 'Пусто — 1,06 % (максимум, у большинства коммун меньше или столько же).' },
+                  ]}
+                  values={taxv}
+                  onChange={setTaxv}
+                />
+                <label className="field">
+                  <span>Категория кадастра</span>
+                  <input className="input" value={taxv.cadastralCategory} placeholder="A/2, C/6…" onChange={(e) => setTaxv({ ...taxv, cadastralCategory: e.target.value })} />
+                  <small>Пусто — по типу объекта (жильё A, гараж C/6, склад C/2, офис A/10, магазин C/1).</small>
+                </label>
+              </>
+            ) : (
+              <>
+                <p className="muted" style={{ marginTop: 0 }}>Налоги других стран ещё не проверены — введите налог на покупку выше, а здесь налог с аренды.</p>
+                <Inputs fields={[{ key: 'incomeTaxRate', label: 'Налог с арендного дохода', kind: 'percent' }]} values={taxv} onChange={setTaxv} />
+              </>
+            )}
+          </details>
+
           <details className="group">
             <summary>Расходы владения</summary>
             <Inputs fields={OPS} values={ops} onChange={setOps} />
@@ -279,6 +366,14 @@ export function Calculator() {
           <details className="group">
             <summary>Прогноз: рост и продажа</summary>
             <p className="muted" style={{ marginTop: 0 }}>Значения по умолчанию — осторожные допущения, а не данные рынка. Поменяйте, если знаете лучше.</p>
+            {hpi && (
+              <p style={{ marginTop: 0 }}>
+                <button className="btn quiet small" type="button" onClick={() => setGrowth({ ...growth, appreciation: (Math.round(hpi.value * 1000) / 10).toString().replace('.', ',') })}>
+                  Взять рост цен Италии: {percent(hpi.value, 1)} в год
+                </button>
+                <br /><small className="muted">Eurostat, в среднем за {hpi.basis}, по всей стране — не по району.</small>
+              </p>
+            )}
             <Inputs fields={GROWTH} values={growth} onChange={setGrowth} />
           </details>
 
@@ -322,6 +417,8 @@ function Result({ r, horizon, setHorizon }: { r: CalcResult; horizon: number; se
     ['Доход в 1\u2011й год', (s) => money(s.yearOne.statement.noi), (s) => s.yearOne.statement.noi < 0],
     ['Доходность', (s) => percent(s.yearOne.netYield, 1), (s) => (s.yearOne.netYield ?? 0) < 0],
     ['На руках в 1-й год', (s) => money(s.yearOne.cashFlow), (s) => s.yearOne.cashFlow < 0, y1.debtService === 0],
+    ['После налога с аренды', (s) => percent(s.yearOne.netYieldAfterTax, 1), (s) => (s.yearOne.netYieldAfterTax ?? 0) < 0, y1.incomeTax === 0],
+    ['На руках после налога', (s) => money(s.yearOne.cashFlowAfterTax), (s) => s.yearOne.cashFlowAfterTax < 0, y1.incomeTax === 0],
     ['IRR в год', (s) => percent(s.horizons[horizon]?.irr, 1), (s) => (s.horizons[horizon]?.irr ?? 0) < 0],
     ['NPV', (s) => money(s.horizons[horizon]?.npv), (s) => (s.horizons[horizon]?.npv ?? 0) < 0],
     ['Итог с продажей', (s) => percent(s.horizons[horizon]?.totalReturn, 1), (s) => (s.horizons[horizon]?.totalReturn ?? 0) < 0],
@@ -336,6 +433,9 @@ function Result({ r, horizon, setHorizon }: { r: CalcResult; horizon: number; se
       <div className="hero-caption num">
         {money(y1.statement.noi)} в год чистыми при вложении {money(y1.acquisition.total)}
       </div>
+      {y1.incomeTax > 0 && (
+        <div className="hero-caption num">После налога с аренды — {percent(y1.netYieldAfterTax, 1)}, это {money(y1.cashFlowAfterTax)} в год на руках</div>
+      )}
 
       <div className="seg" role="group" aria-label="Горизонт">
         {base.horizons.map((h, i) => (
@@ -374,12 +474,15 @@ function Result({ r, horizon, setHorizon }: { r: CalcResult; horizon: number; se
         {Object.entries(y1.statement.expenses).filter(([, v]) => v).map(([k, v]) => (<Fragment key={k}><dt>{LINE_LABEL[k] ?? k}</dt><dd className="neg">−{money(v)}</dd></Fragment>))}
         <dt className="total">Чистый доход (NOI)</dt><dd className="total">{money(y1.statement.noi)}</dd>
         {y1.debtService > 0 && (<><dt>Платежи по кредиту</dt><dd className="neg">−{money(y1.debtService)}</dd><dt className="total">Остаётся на руках</dt><dd className="total">{money(y1.cashFlow)}</dd></>)}
+        {y1.incomeTax > 0 && (<><dt>Налог с аренды</dt><dd className="neg">−{money(y1.incomeTax)}</dd><dt className="total">На руках после налога</dt><dd className="total">{money(y1.cashFlowAfterTax)}</dd></>)}
         <dt>Валовая доходность</dt><dd>{percent(y1.grossYield)}</dd>
         <dt>Cap rate</dt><dd>{percent(y1.capRate)}</dd>
         <dt>Cash-on-cash</dt><dd>{percent(y1.cashOnCash)}</dd>
         {r.modelMetrics.waultYears !== undefined && (<><dt>WAULT</dt><dd>{years(r.modelMetrics.waultYears)}</dd></>)}
         {r.modelMetrics.revPar !== undefined && (<><dt>RevPAR</dt><dd>{money(r.modelMetrics.revPar)}</dd></>)}
       </dl>
+
+      {r.tax && <TaxDetails t={r.tax} />}
 
       <h2>На чём основан расчёт</h2>
       <ul className="assumptions">
@@ -390,5 +493,27 @@ function Result({ r, horizon, setHorizon }: { r: CalcResult; horizon: number; se
       </ul>
       <p className="muted">{r.disclaimer} Версия расчёта: {r.engineVersion}.</p>
     </section>
+  );
+}
+
+function TaxDetails({ t }: { t: TaxBlock }) {
+  return (
+    <>
+      <h2>Налоги Италии</h2>
+      <dl className="kv num">
+        {t.purchase.lines.map((l) => (<Fragment key={l.key}><dt>{l.label}<br /><small className="muted">{l.basis}</small></dt><dd>{money(l.amount)}</dd></Fragment>))}
+        <dt className="total">Налоги при покупке</dt><dd className="total">{money(t.purchase.total)}{t.purchase.applied ? '' : ' (не применено — вы ввели свою сумму)'}</dd>
+        {t.imu && (<><dt>IMU в год<br /><small className="muted">категория {t.imu.cadastralCategory}, ставка {percent(t.imu.rate, 2)}{t.imu.mainResidence ? ', основное жильё — освобождено' : ''}</small></dt><dd>{money(t.imu.amount)}{t.imu.applied ? '' : ' (не применено)'}</dd></>)}
+        <dt>Налог с аренды</dt><dd>{t.rental.rate === null ? 'не считается' : percent(t.rental.rate, 0)}</dd>
+      </dl>
+      <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{t.rental.note}</p>
+      {t.purchase.estimated && <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Налог на покупку посчитан от цены — это оценка сверху. С кадастровой рентой будет точнее.</p>}
+      {t.warnings.length > 0 && <ul className="assumptions">{t.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+      <p className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
+        Ставки проверены {new Date(t.verifiedAt).toLocaleDateString('ru-RU')} по источникам:{' '}
+        {t.sources.map((s, i) => <Fragment key={s.url}>{i > 0 && '; '}<a href={s.url} target="_blank" rel="noreferrer">{s.title}</a></Fragment>)}.
+        Не заменяет нотариуса и коммерчиалиста.
+      </p>
+    </>
   );
 }

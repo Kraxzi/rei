@@ -144,6 +144,11 @@ market.get('/', async (c) => {
   return c.json({ rows, note: 'Цены предложений (объявлений), не сделок. Медианы; доходность — валовая.', hpi: { country: 'IT', ...it } });
 });
 
+market.get('/hpi', async (c) => {
+  const { marketGrowth } = await import('../ingest/market.js');
+  return c.json({ country: 'IT', ...(await marketGrowth(c.env, c.req.query('country') ?? 'IT')) });
+});
+
 // ---------- tax profile (applies to automatic analysis of every offer) ----------
 export const settings = new Hono<AppEnv>();
 const taxProfileSchema = z.object({

@@ -5,6 +5,9 @@ import { ErrorBox, go } from '../ui';
 import { ScoreBadge } from './Feed';
 import { AnalystBlock } from './Extra';
 
+const POI_ORDER: Array<[string, string]> = [
+  ['grocery', 'магазины'], ['pharmacy', 'аптеки'], ['health', 'врачи'], ['school', 'школы'], ['bus', 'остановки'], ['station', 'станции'], ['food', 'кафе'], ['beach', 'пляжи'],
+];
 interface Comp { value: number | null; weight: number; confidence: number; basis: string }
 interface PropertyData {
   redirect?: string;
@@ -17,8 +20,8 @@ interface PropertyData {
   images: string[];
   score: { score: number | null; confidence: number; components: Record<string, Comp>; reasons: string[]; profile: string; engine: string; at: string } | null;
   valuation: { low: number; mid: number; high: number; n: number; kind: string; confidence: number; at: string } | null;
-  rental: { rent: { monthly: number; low: number; high: number; n: number } | null; assumptions: Array<{ key: string; value: number | string; unit?: string; source: string }>; finance: { statement: { gri: number; noi: number }; acquisition: { total: number }; netYield: number | null; grossYield: number | null } | null } | null;
-  netYield: number | null; undervaluation: number | null;
+  rental: { taxWarnings?: string[]; pois?: Record<string, number> | null; rent: { monthly: number; low: number; high: number; n: number } | null; assumptions: Array<{ key: string; value: number | string; unit?: string; source: string }>; finance: { statement: { gri: number; noi: number }; acquisition: { total: number }; netYield: number | null; grossYield: number | null } | null } | null;
+  netYield: number | null; netYieldAfterTax: number | null; undervaluation: number | null;
   notes: Array<{ id: string; text: string; created_at: string }>; favorite: boolean;
   duplicates: Array<{ id: string; property_a: string; property_b: string; probability: number }>;
 }
@@ -141,6 +144,7 @@ export function Property({ id, user }: { id: string; user: User }) {
           <dt>Аренда по похожим объявлениям</dt><dd>{money(p.rental.rent.monthly)} / мес</dd>
           <dt>Чистый доход в год (оценка)</dt><dd>{money(p.rental.finance.statement.noi)}</dd>
           <dt>Чистая доходность (оценка)</dt><dd>{percent(p.rental.finance.netYield, 1)}</dd>
+          {p.netYieldAfterTax !== null && p.netYieldAfterTax !== p.netYield && (<><dt>После налога с аренды</dt><dd>{percent(p.netYieldAfterTax, 1)}</dd></>)}
           <dt className="muted">Основа</dt><dd className="muted">{p.rental.rent.n} объявлений об аренде</dd>
         </dl>
       )}
@@ -151,6 +155,19 @@ export function Property({ id, user }: { id: string; user: User }) {
             <li key={a.key}>{ASSUMPTION[a.key] ?? a.key}: {typeof a.value === 'number' && a.unit === 'fraction' ? percent(a.value, 1) : typeof a.value === 'number' && a.unit?.startsWith('cents') ? money(a.value) : a.unit === '%' ? `${a.value} %` : String(a.value)} — {a.source.replace(/^default: ?/, 'допущение: ').replace(/^default$/, 'допущение')}</li>
           ))}
         </ul>
+      )}
+
+      {p.rental?.taxWarnings && p.rental.taxWarnings.length > 0 && (
+        <ul className="assumptions">{p.rental.taxWarnings.map((w) => <li key={w}>{w}</li>)}</ul>
+      )}
+      {p.rental?.pois && (
+        <>
+          <h3>Что рядом</h3>
+          <p className="muted" style={{ marginTop: 0 }}>
+            {POI_ORDER.map(([k, label]) => `${label}: ${p.rental!.pois![k] ?? 0}`).join(', ')}.
+            {p.geoPrecision !== 'exact' && ' Адрес приблизительный — считано вокруг центра района/города.'} Данные OpenStreetMap.
+          </p>
+        </>
       )}
 
       {main?.deal_type !== 'rent' && <AnalystBlock propertyId={p.id} />}
